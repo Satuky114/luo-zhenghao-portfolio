@@ -1,0 +1,91 @@
+{
+  "nav": {
+    "about": "About",
+    "projects": "AI Projects",
+    "content": "Content",
+    "skills": "Skills",
+    "experience": "Experience",
+    "contact": "Contact"
+  },
+  "hero": {
+    "greeting": "Hi, I'm",
+    "name": "Luo Zhenghao",
+    "title1": "AI Content Operations",
+    "title2": "AIGC Creator",
+    "subtitle": "Empowering content with AI — where technology and creativity converge in every story",
+    "cta": "Learn More",
+    "cta2": "Contact Me"
+  },
+  "about": {
+    "title": "About Me",
+    "bio1": "Sophomore at Southwest Minzu University, majoring in Network & New Media. Passionate about the intersection of content creation and AI technology.",
+    "bio2": "I believe AI is not a replacement for creators, but an amplifier of creative energy. From Prompt Engineering to AI-assisted development, I continuously explore how LLMs can become the accelerator for content production.",
+    "bio3": "Beyond academics, I'm a bilingual anchor, volleyball athlete, and photography enthusiast. These diverse identities give me a richer perspective in content creation.",
+    "age": "19",
+    "location": "Chengdu",
+    "school": "Southwest Minzu University",
+    "major": "Network & New Media"
+  },
+  "projects": {
+    "title": "AI Projects",
+    "subtitle": "Every project is a practice of human-AI collaboration",
+    "website": {
+      "title": "Personal Brand Website",
+      "description": "Independently completed the full development lifecycle — from requirements analysis and prototype design to frontend development and deployment — using AI tools like ChatGPT and Claude. Applied Prompt Engineering methodology to systematically decompose tasks, establishing a collaborative workflow: 'Task Breakdown → AI Generation → Human Verification → Rapid Iteration'.",
+      "tags": ["React", "Next.js", "Prompt Engineering", "Full-stack Delivery"]
+    }
+  },
+  "content": {
+    "title": "Content Creation",
+    "subtitle": "25 Works · Featured on People's Daily & China News Network · 2M+ Total Views",
+    "daozhonghua": {
+      "title": "Dao Zhonghua Studio",
+      "role": "Bilingual Anchor / Content Creator",
+      "period": "Jan – Mar 2026",
+      "description": "Short-form video series focusing on Bashu culture and ethnic cultural communication. Served as bilingual anchor and content creator, using ChatGPT for topic planning and script optimization, with Canva and CapCut for visual design and editing.",
+      "highlights": ["25 Original Works", "Featured on People's Daily", "Featured on China News Network", "117K+ Single Video Views"]
+    }
+  },
+  "skills": {
+    "title": "Skills & Tools",
+    "ai": "AI Tools",
+    "dev": "Development",
+    "content": "Content Tools",
+    "core": "Core Competencies"
+  },
+  "experience": {
+    "title": "Internship",
+    "party": {
+      "org": "CPC Shenyang Shenhe District Committee",
+      "role": "Operations Intern",
+      "period": "Jan – Mar 2026",
+      "desc1": "Independently planned, wrote, and published 20+ WeChat official account articles, using ChatGPT to optimize content, with key articles achieving 40%+ increase in readership",
+      "desc2": "Planned and produced youth-themed short videos; 2 works re-shared by higher-level organization's official account"
+    }
+  },
+  "education": {
+    "title": "Education",
+    "school": "Southwest Minzu University",
+    "major": "Network & New Media",
+    "period": "Sep 2024 – Jun 2028",
+    "honors": "Sichuan Provincial Volleyball Runner-up · Outstanding Student Leader · University Photography 2nd Prize"
+  },
+  "aiResearch": {
+    "title": "AI Industry Research",
+    "desc1": "Continuously tracking product iterations and industry trends at OpenAI, Anthropic, Google DeepMind, and more",
+    "desc2": "Proficient in using ChatGPT, Claude, DeepSeek, and other major LLMs, with cross-model Prompt tuning expertise",
+    "desc3": "Following cutting-edge developments in LLMs, AI Agents, and AIGC tools — translating AI capabilities into content productivity"
+  },
+  "contact": {
+    "title": "Get in Touch",
+    "email": "Email",
+    "phone": "Phone",
+    "github": "GitHub",
+    "wechat": "WeChat"
+  },
+  "footer": {
+    "builtWith": "AI-powered collaboration driven by Claude",
+    "copyright": "© 2026 Luo Zhenghao"
+  },
+  "langSwitch": "中文"
+}

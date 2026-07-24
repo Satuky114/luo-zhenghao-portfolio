@@ -1,0 +1,91 @@
+{
+  "nav": {
+    "about": "关于我",
+    "projects": "AI项目",
+    "content": "内容创作",
+    "skills": "技能",
+    "experience": "经历",
+    "contact": "联系"
+  },
+  "hero": {
+    "greeting": "Hi，我是",
+    "name": "罗政皓",
+    "title1": "AI内容运营",
+    "title2": "AIGC创作者",
+    "subtitle": "用AI赋予内容生命力，让技术与创意在每一次传播中完美融合",
+    "cta": "了解更多",
+    "cta2": "联系我"
+  },
+  "about": {
+    "title": "关于我",
+    "bio1": "西南民族大学网络与新媒体专业大二在读，热爱内容创作与AI技术的交叉探索。",
+    "bio2": "我坚信AI不是替代创作者的工具，而是放大创意能量的引擎。从Prompt Engineering到AI协同开发，我持续实践如何让大模型成为内容生产的加速器。",
+    "bio3": "课余时间，我是一名双语主播、排球运动员和摄影爱好者。多元的身份让我在内容创作中拥有更丰富的视角。",
+    "age": "19岁",
+    "location": "成都",
+    "school": "西南民族大学",
+    "major": "网络与新媒体"
+  },
+  "projects": {
+    "title": "AI项目作品",
+    "subtitle": "每个项目都是AI协同工作的实践成果",
+    "website": {
+      "title": "个人品牌官网",
+      "description": "基于ChatGPT、Claude等AI工具，独立完成从需求分析、原型设计、前端开发到部署上线的全流程实践。运用Prompt Engineering方法系统拆解开发任务，建立'需求拆解→AI生成→人工校验→快速迭代'的协同开发工作流。",
+      "tags": ["React", "Next.js", "Prompt Engineering", "全流程交付"]
+    }
+  },
+  "content": {
+    "title": "内容创作",
+    "subtitle": "25部作品 · 人民网等主流媒体转载 · 累计200万+传播量",
+    "daozhonghua": {
+      "title": "道中华工作室",
+      "role": "双语主播 / 内容创作者",
+      "period": "2026.01 – 2026.03",
+      "description": "聚焦巴蜀文化、民族文化对外传播的系列短视频项目。担任双语主播及内容创作者，使用ChatGPT辅助选题策划与脚本优化，借助Canva、剪映完成视觉设计与剪辑。",
+      "highlights": ["25部作品创作", "人民网转载", "中国新闻网转载", "单条最高11.7万浏览"]
+    }
+  },
+  "skills": {
+    "title": "技能与工具",
+    "ai": "AI工具",
+    "dev": "开发工具",
+    "content": "内容工具",
+    "core": "核心能力"
+  },
+  "experience": {
+    "title": "实习经历",
+    "party": {
+      "org": "中国共产党沈阳市沈河区委员会",
+      "role": "运营实习生",
+      "period": "2026.01 – 2026.03",
+      "desc1": "独立完成20+篇公众号推文的策划、撰写与发布，运用ChatGPT辅助内容优化，重点推文阅读量提升40%+",
+      "desc2": "策划并制作青年主题短视频，2条作品获上级团组织官方账号转载"
+    }
+  },
+  "education": {
+    "title": "教育背景",
+    "school": "西南民族大学",
+    "major": "网络与新媒体",
+    "period": "2024.09 – 2028.06",
+    "honors": "四川省大学生排球比赛亚军 · 院优秀学生干部 · 校摄影大赛二等奖"
+  },
+  "aiResearch": {
+    "title": "AI行业研究与实践",
+    "desc1": "持续跟踪OpenAI、Anthropic、Google DeepMind等公司的产品迭代与行业动态",
+    "desc2": "深度使用ChatGPT、Claude、DeepSeek等主流大模型，积累跨模型Prompt调优经验",
+    "desc3": "关注LLM、AI Agent、AIGC等前沿技术发展趋势，具备将AI能力转化为内容生产力的实践基础"
+  },
+  "contact": {
+    "title": "联系我",
+    "email": "邮箱",
+    "phone": "电话",
+    "github": "GitHub",
+    "wechat": "微信"
+  },
+  "footer": {
+    "builtWith": "由 Claude 驱动的 AI 协同创作",
+    "copyright": "© 2026 罗政皓"
+  },
+  "langSwitch": "English"
+}
