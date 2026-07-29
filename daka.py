@@ -1,42 +1,31 @@
 """
-民大自动打卡脚本 v2
+民大自动打卡脚本 v3
 ====================
 支持：本地运行 / GitHub Actions
-控制：在 GitHub → Actions → 民大每日打卡 → 右侧 "..." → Disable workflow 随时停止
+控制：GitHub → Actions → 民大每日打卡 → "..." → Disable workflow
 
-本地用法：
-  pip install playwright && playwright install chromium
-  python daka.py          # 自动打卡
-  python daka.py -m       # 手动模式（打开浏览器自己操作）
-
-GitHub 部署：
-  1. 推送仓库
-  2. Settings → Secrets → 添加:
-     SWUN_USERNAME: 你的学号
-     SWUN_PASSWORD: 统一认证密码
-  3. Actions → 民大每日打卡 → Run workflow 测试
-  4. 每天 21:35 自动运行（要停就去 Actions → Disable）
-
-技术细节：
-  - Playwright geolocation 伪造 GPS = 学校坐标
-  - 页面 JS 自动处理 AES 加密 + l2t2q0Jo WAF 签名
-  - 无需 Cookie 管理，每次自动登录
+技术要点：
+  - 使用与 iPhone 完全一致的 User-Agent 绕过 WAF
+  - geolocation 劫持 GPS = 学校坐标
+  - 页面 JS 自动处理 AES 加密 + l2t2q0Jo 签名
 """
-import os
-import sys
-import time
-import traceback
+import os, sys, time, traceback
+
 from playwright.sync_api import sync_playwright, TimeoutError as PT
 
-# ===== 学校配置 =====
+# ===== 配置 =====
 SCHOOL_LAT = 30.562897
 SCHOOL_LNG = 103.966624
-
-# ===== URL =====
 WXWEB = "https://gyglxt.swun.edu.cn/wxweb/"
 CLOCK_PAGE = f"{WXWEB}#/PositioningClock"
 
-# ===== 凭据（环境变量 > 代码内写死 > 交互输入）=====
+# 必须与抓包中的完全一致
+IOS_UA = (
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 "
+    "lantuMobilecampus lantuMC"
+)
+
 USERNAME = os.environ.get("SWUN_USERNAME") or ""
 PASSWORD = os.environ.get("SWUN_PASSWORD") or ""
 
@@ -47,152 +36,167 @@ def log(msg):
 
 def cas_login(page):
     """CAS 统一认证登录"""
-    # CAS 登录页
     page.wait_for_url("**/authserver.swun.edu.cn/**", timeout=15000)
-    log(f"在 CAS 登录页: {page.url[:60]}...")
+    log(f"CAS 登录页...")
 
-    # 等待并填写表单
     page.wait_for_selector("#username", timeout=10000)
     page.fill("#username", USERNAME)
     page.fill("#password", PASSWORD)
 
-    # 截图看有没有验证码
     page.screenshot(path="cas_login.png")
-    log("📸 已截图 cas_login.png")
+    log("📸 cas_login.png")
 
-    # 点击登录按钮
-    page.click("button[type='submit'], input[value='登录'], .login-btn")
+    # 检查是否有验证码（一般没有）
+    captcha = page.locator("#captcha, .captcha, [name='captcha']")
+    if captcha.count() > 0:
+        log("⚠️ 检测到验证码！截图保存...")
+        # 验证码需要手动处理，但 CAS 登录一般不需要
 
-    # 等待跳回 wxweb
-    page.wait_for_url("**/wxweb/**", timeout=30000)
-    log("✅ CAS 登录成功，已跳回应用")
+    page.click("button[type='submit'], input[type='submit'], .login-btn, [type='button']")
+
+    try:
+        page.wait_for_url("**/wxweb/**", timeout=30000)
+        log("✅ 登录成功")
+    except PT:
+        # 可能登录失败，看看页面内容
+        body = page.locator("body").inner_text()
+        log(f"⚠️ 登录结果不明: {body[:200]}")
 
 
 def do_checkin(headless=True, manual_mode=False):
-    """执行打卡"""
     log("🚀 启动浏览器...")
 
     with sync_playwright() as p:
-        # 启动带持久化的浏览器（本地运行保存 Cookie，下次更快）
         context = p.chromium.launch_persistent_context(
             user_data_dir="./browser_data",
             headless=headless,
             geolocation={"latitude": SCHOOL_LAT, "longitude": SCHOOL_LNG},
             permissions=["geolocation"],
             viewport={"width": 375, "height": 812},
-            user_agent=(
-                "Mozilla/5.0 (Linux; Android 10; Pixel 3) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 "
-                "Mobile Safari/537.36"
-            ),
+            user_agent=IOS_UA,
             locale="zh-CN",
+            # 反检测
+            args=[
+                "--disable-blink-features=AutomationControlled",
+            ],
         )
         page = context.new_page()
 
-        try:
-            # ====== 第一步：访问打卡页面 ======
-            log("📍 打开打卡页面...")
-            page.goto(CLOCK_PAGE, wait_until="domcontentloaded", timeout=30000)
+        # 注入反检测脚本
+        page.add_init_script("""
+            // 移除 webdriver 标记
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
+            // 伪造 plugins 数量
+            Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+            // 伪造 platform
+            Object.defineProperty(navigator, 'platform', { get: () => 'iPhone' });
+        """)
 
-            # 检查是否被重定向到 CAS
+        try:
+            # ====== 访问打卡页 ======
+            log("📍 访问打卡页面...")
+            page.goto(CLOCK_PAGE, wait_until="networkidle", timeout=60000)
+
+            # 等 WAF 脚本执行完
+            page.wait_for_timeout(5000)
+
+            # 检查是否跳 CAS
             if "authserver" in page.url:
                 if not USERNAME or not PASSWORD:
-                    log("❌ 需要登录但未设置 SWUN_USERNAME / SWUN_PASSWORD")
-                    log("💡 本地运行: python daka.py -m  (手动模式)")
-                    log("💡 GitHub: Settings → Secrets 添加凭据")
+                    log("❌ 需要登录，请设置 Secrets")
                     return False
                 cas_login(page)
-                # 重新访问打卡页
-                page.goto(CLOCK_PAGE, wait_until="domcontentloaded", timeout=30000)
+                page.goto(CLOCK_PAGE, wait_until="networkidle", timeout=60000)
+                page.wait_for_timeout(5000)
 
-            # 等待 Vue 应用加载
-            log("⏳ 等待页面渲染...")
-            page.wait_for_timeout(3000)
+            # ====== 检查页面状态 ======
+            log(f"当前 URL: {page.url[:80]}")
 
-            # 等待地图组件初始化
-            try:
-                page.wait_for_selector(".position-clock, .location, .amap-demo", timeout=15000)
-                log("✅ 页面加载完成")
-            except PT:
-                log("⚠️ 页面可能加载缓慢，继续尝试...")
+            # 获取页面内容
+            body_text = page.locator("body").inner_text().strip()
 
-            page.screenshot(path="daka_before.png")
-            log("📸 截图 daka_before.png")
+            screenshot_path = "daka_before.png"
+            page.screenshot(path=screenshot_path, full_page=True)
+            log(f"📸 {screenshot_path}")
 
-            # ====== 手动模式：交给用户操作 ======
+            log(f"Body 内容 ({len(body_text)} 字符): {body_text[:300]}")
+
+            if not body_text:
+                log("⚠️ 页面内容为空，可能被 WAF 拦截")
+                log("💡 尝试获取 HTML...")
+                html = page.content()
+                log(f"HTML 长度: {len(html)}")
+                # 写 HTML 到 artifacts
+                with open("page_dump.html", "w", encoding="utf-8") as f:
+                    f.write(html)
+
+            # ====== 手动模式 ======
             if manual_mode:
-                log("👆 手动模式：请在浏览器中点击打卡，完成后按 Enter...")
+                log("👆 手动模式：请在浏览器操作后按 Enter...")
                 input()
-                page.screenshot(path="daka_manual_result.png")
-                log("📸 截图 daka_manual_result.png")
+                page.screenshot(path="daka_result.png")
                 return True
 
-            # ====== 第二步：检查打卡状态 ======
-            # 用 JS 读取 Vue 组件状态
-            clock_state = page.evaluate("""() => {
-                const root = document.querySelector('#app');
-                const text = document.body.innerText;
-                return {
-                    bodyText: text.substring(0, 500),
-                    url: location.href
-                };
-            }""")
-
-            log(f"页面内容片段: {clock_state['bodyText'][:200]}")
-
-            if "已打卡" in clock_state['bodyText'] or "打卡成功" in clock_state['bodyText']:
-                log("✅ 今日可能已打卡，无需重复操作")
+            # ====== 检查是否在打卡时段 ======
+            if "不在" in body_text or "无需" in body_text:
+                log("✅ 今日已打过卡，或不在打卡时段（正常现象）")
                 return True
 
-            # ====== 第三步：点击打卡按钮 ======
-            # 打卡按钮在 Vue 组件中，文本为"打卡"
-            log("🖱️ 正在查找打卡按钮...")
+            if "已打卡" in body_text or "打卡成功" in body_text:
+                log("✅ 今日已打卡")
+                return True
 
-            # Van UI 按钮
-            btn = page.locator("button").filter(has_text="打卡")
+            # ====== 找打卡按钮 ======
+            log("🔍 查找打卡按钮...")
 
-            if btn.count() == 0:
-                # 尝试其他选择器
-                btn = page.locator(".van-button:has-text('打卡'), [class*='submit']:has-text('打卡'), .punch-btn")
+            # 打印所有按钮文本帮助诊断
+            buttons = page.locator("button").all()
+            log(f"页面上有 {len(buttons)} 个按钮")
+            for i, btn in enumerate(buttons[:5]):
+                try:
+                    txt = btn.inner_text()
+                    log(f"  按钮 {i}: '{txt}'")
+                except:
+                    pass
 
-            if btn.count() > 0:
-                log(f"找到 {btn.count()} 个按钮")
-                btn.first.click()
-                log("✅ 已点击打卡按钮")
+            # 尝试多种选择器
+            clock_btn = page.locator("button").filter(has_text="打卡")
+            if clock_btn.count() == 0:
+                clock_btn = page.locator(".van-button:has-text('打卡')")
+            if clock_btn.count() == 0:
+                # 通过 Vue 数据判断
+                clock_btn = page.locator("[class*='position'] button, .clock-btn, [class*='punch']")
 
-                # 等待结果
+            if clock_btn.count() > 0:
+                log(f"✅ 找到打卡按钮，点击...")
+                clock_btn.first.click()
                 page.wait_for_timeout(4000)
 
-                # ====== 第四步：检验结果 ======
-                toast = page.locator(".van-toast, .van-notify, [class*='toast'], [class*='success']")
                 body = page.locator("body").inner_text()
-
-                if "成功" in body or "success" in body.lower() or toast.count() > 0:
+                if "成功" in body:
                     log("🎉 打卡成功！")
                     page.screenshot(path="daka_success.png")
                     return True
                 else:
-                    log(f"⚠️ 反馈不明: {body[:300]}")
+                    log(f"结果: {body[:200]}")
                     page.screenshot(path="daka_result.png")
-                    return True  # 可能已经成功了，不报错
+                    return True
             else:
-                log("⚠️ 未找到打卡按钮，可能:")
-                log("   1. 不在打卡时段 (21:30-23:25)")
-                log("   2. 今日已打卡")
-                log("   3. 页面结构发生变化")
+                log("ℹ️ 未找到打卡按钮")
+                log("如果当前不在 21:30-23:25，这是正常的")
                 page.screenshot(path="daka_no_button.png")
-                return True  # 不报错，可能是时段外
+                return True
 
         except PT as e:
             log(f"❌ 超时: {e}")
             try:
-                page.screenshot(path="daka_timeout.png")
+                page.screenshot(path="daka_error.png")
             except:
                 pass
             return False
 
         except Exception as e:
-            log(f"❌ 错误: {traceback.format_exc()}")
+            log(f"❌ 异常: {traceback.format_exc()}")
             try:
                 page.screenshot(path="daka_error.png")
             except:
@@ -206,22 +210,12 @@ def do_checkin(headless=True, manual_mode=False):
 
 def main():
     import argparse
-    p = argparse.ArgumentParser(description="民大自动打卡")
-    p.add_argument("-m", "--manual", action="store_true", help="手动模式：打开浏览器自己点")
-    p.add_argument("--show", action="store_true", help="显示浏览器界面（非无头）")
-    p.add_argument("-u", "--username", help="学号")
-    p.add_argument("--password", help="密码")
-    args = p.parse_args()
+    ap = argparse.ArgumentParser(description="民大自动打卡")
+    ap.add_argument("-m", "--manual", action="store_true", help="手动模式")
+    ap.add_argument("--show", action="store_true", help="显示浏览器")
+    args = ap.parse_args()
 
-    global USERNAME, PASSWORD
-    if args.username:
-        USERNAME = args.username
-    if args.password:
-        PASSWORD = args.password
-
-    # 手动模式必须显示浏览器
     headless = not (args.show or args.manual)
-
     ok = do_checkin(headless=headless, manual_mode=args.manual)
     sys.exit(0 if ok else 1)
 
