@@ -220,29 +220,17 @@ def do_checkin(headless=True, manual_mode=False):
                     )
                     log("OAuth token processed, hash changed")
                 except PT:
-                    log("OAuth hash didn't change, continuing anyway")
+                    log("OAuth hash didn't change within timeout, continuing anyway")
                 page.wait_for_timeout(3000)
 
             page.evaluate("window.location.hash = '#/PositioningClock'")
             page.wait_for_timeout(3000)
             log(f"Clock page URL: {page.url[:100]}")
 
-            # Wait for ALL loading toasts to disappear (queryPersonDetail API)
-            # Toast shows in sequence: loading -> queryPersonDetailInfoByPersonsnV1
-            for attempt in range(10):
-                toast_visible = page.evaluate("""
-                    (function() {
-                        var t = document.querySelector('.van-toast');
-                        return t && window.getComputedStyle(t).display !== 'none';
-                    })()
-                """)
-                if toast_visible:
-                    log(f"Waiting for toast #{attempt+1}...")
-                    page.wait_for_timeout(2000)
-                else:
-                    log("All toasts gone")
-                    break
-            page.wait_for_timeout(2000)
+            # Wait for API calls to complete: queryPersonDetailInfo, geocode, etc.
+            # The page shows multiple loading toasts. Wait for them to finish.
+            page.wait_for_timeout(10000)
+            log("Waited for API calls to complete")
 
             # Also save page_text.txt as artifact for UTF-8 debug
             body = page.locator("body").inner_text().strip()
