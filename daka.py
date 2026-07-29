@@ -243,6 +243,8 @@ def do_checkin(headless=True, manual_mode=False):
                 except EOFError:
                     log("(EOF on input, continuing automatically)")
                 page.screenshot(path="daka_result.png")
+                # Also try clicking in manual mode
+                find_and_click_clock(page)
                 return True
 
             # Step 5: Find and click check-in button
