@@ -33,6 +33,13 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# 打卡脚本 - 不要提交登录凭证
+browser_data/
+daka*.png
+swun_cookies_base64.txt
+__pycache__/
+*.pyc
+
 # vercel
 .vercel
 

@@ -1,0 +1,38 @@
+name: 民大每日打卡
+
+on:
+  schedule:
+    # UTC 13:35 = 北京时间 21:35（打卡开始后5分钟）
+    - cron: '35 13 * * *'
+  workflow_dispatch:  # 手动触发按钮
+
+jobs:
+  daka:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install playwright
+
+      - run: playwright install chromium --with-deps
+
+      - name: 执行打卡
+        env:
+          SWUN_USERNAME: ${{ secrets.SWUN_USERNAME }}
+          SWUN_PASSWORD: ${{ secrets.SWUN_PASSWORD }}
+        run: python daka.py
+
+      - name: 保存截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daka-screenshots
+          path: |
+            daka*.png
+            cas_login.png
