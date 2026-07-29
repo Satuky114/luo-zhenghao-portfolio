@@ -196,21 +196,37 @@ def do_checkin(headless=True, manual_mode=False):
             # If CAS returned us to #/hoyOauth, wait for SPA to process token
             if "hoyOauth" in page.url or "oauth" in page.url.lower():
                 log("Detected OAuth callback, waiting for token processing...")
-                page.wait_for_timeout(8000)
-                log(f"Post-OAuth URL: {page.url[:100]}")
+                # Wait until hash changes away from hoyOauth (SPA processed the token)
+                try:
+                    page.wait_for_function(
+                        "!window.location.hash.includes('hoyOauth')",
+                        timeout=20000
+                    )
+                    log("OAuth token processed, hash changed")
+                except PT:
+                    log("OAuth hash didn't change, continuing anyway")
+                page.wait_for_timeout(3000)
 
             page.evaluate("window.location.hash = '#/PositioningClock'")
-            # Wait for Vue SPA to render clock page and finish API calls
             page.wait_for_timeout(3000)
             log(f"Clock page URL: {page.url[:100]}")
 
-            # Wait for loading toast to disappear (queryPersonDetail API call)
-            try:
-                page.wait_for_selector(".van-toast", state="hidden", timeout=15000)
-                log("Loading toast gone")
-            except PT:
-                log("Loading toast still visible or not found")
-            page.wait_for_timeout(3000)
+            # Wait for ALL loading toasts to disappear (queryPersonDetail API)
+            # Toast shows in sequence: loading -> queryPersonDetailInfoByPersonsnV1
+            for attempt in range(10):
+                toast_visible = page.evaluate("""
+                    (function() {
+                        var t = document.querySelector('.van-toast');
+                        return t && window.getComputedStyle(t).display !== 'none';
+                    })()
+                """)
+                if toast_visible:
+                    log(f"Waiting for toast #{attempt+1}...")
+                    page.wait_for_timeout(2000)
+                else:
+                    log("All toasts gone")
+                    break
+            page.wait_for_timeout(2000)
 
             body = page.locator("body").inner_text().strip()
             # Write body to file to preserve UTF-8
