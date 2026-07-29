@@ -1,11 +1,10 @@
 """
-民大自动打卡脚本 v4
-====================
-
-策略：
-  1. 访问 wxweb/ 等待 Vue 加载
-  2. SPA 内部导航到打卡页
-  3. 点按钮打卡
+民大自动打卡 v5
+===============
+核心修复:
+  1. 超长等待 SPA 渲染（WAF JS 需要时间）
+  2. 增强反检测
+  3. 逐秒检查页面状态直到内容出现
 """
 import os, sys, time, traceback
 from datetime import datetime
@@ -14,7 +13,6 @@ from playwright.sync_api import sync_playwright, TimeoutError as PT
 SCHOOL_LAT = 30.562897
 SCHOOL_LNG = 103.966624
 WXWEB = "https://gyglxt.swun.edu.cn/wxweb/"
-CLOCK_HASH = "#/PositioningClock"
 
 IOS_UA = (
     "Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) "
@@ -27,13 +25,12 @@ PASSWORD = os.environ.get("SWUN_PASSWORD") or ""
 
 
 def log(msg):
-    stamp = datetime.now().strftime("%H:%M:%S")
     safe = msg.encode("ascii", errors="replace").decode("ascii")
-    print(f"[{stamp}] {safe}")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {safe}")
 
 
 def cas_login(page):
-    log("CAS login page detected, logging in...")
+    log("CAS redirect detected, logging in...")
     page.wait_for_url("**/authserver.swun.edu.cn/**", timeout=20000)
     page.wait_for_selector("#username", timeout=10000)
     page.fill("#username", USERNAME)
@@ -41,6 +38,34 @@ def cas_login(page):
     page.click("button[type='submit'], input[type='submit']")
     page.wait_for_url("**/wxweb/**", timeout=30000)
     log("CAS login OK")
+
+
+def wait_for_spa(page, max_wait=60):
+    """Wait for Vue SPA to render — polls until body has content"""
+    log(f"Waiting for SPA (max {max_wait}s)...")
+    for i in range(max_wait):
+        try:
+            text = page.locator("body").inner_text().strip()
+            if text and len(text) > 50:
+                log(f"SPA ready after {i+1}s: '{text[:100]}...'")
+                return True
+            # Also check for specific elements
+            has_app = page.locator("#app").count() > 0
+            has_vue = page.locator("[class*='van-'], [class*='position-'], .bg-box").count() > 0
+            if has_vue:
+                log(f"Vue components visible after {i+1}s")
+                return True
+        except:
+            pass
+        time.sleep(1)
+
+    # Last attempt
+    try:
+        text = page.locator("body").inner_text().strip()
+        log(f"Final body: '{text[:200]}'")
+    except:
+        log("Could not read body")
+    return False
 
 
 def do_checkin(headless=True, manual_mode=False):
@@ -58,71 +83,83 @@ def do_checkin(headless=True, manual_mode=False):
             viewport={"width": 375, "height": 812},
             user_agent=IOS_UA,
             locale="zh-CN",
+            args=[
+                "--disable-blink-features=AutomationControlled",
+            ],
         )
         page = context.new_page()
 
+        # Anti-detection: hide webdriver flag BEFORE any page load
         page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {get: () => false});
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+            Object.defineProperty(navigator, 'languages', {get: () => ['zh-CN', 'zh']});
+            window.chrome = { runtime: {} };
         """)
 
         try:
-            # Step 1: Visit home page, get WAF cookies
-            log("Step 1: Visiting home page...")
+            # Step 1: Visit home page
+            log("Step 1: Loading home page...")
             page.goto(WXWEB, wait_until="domcontentloaded", timeout=30000)
-            page.wait_for_timeout(5000)
 
-            log(f"URL: {page.url[:120]}")
-
-            # Handle CAS redirect
+            # Check for CAS redirect immediately
+            page.wait_for_timeout(3000)
             if "authserver" in page.url:
                 if not USERNAME or not PASSWORD:
-                    log("ERROR: Login required but no credentials set")
-                    log("  Set SWUN_USERNAME and SWUN_PASSWORD env vars")
+                    log("ERROR: Need SWUN_USERNAME / SWUN_PASSWORD")
                     return False
                 cas_login(page)
-                page.wait_for_timeout(5000)
+                page.goto(WXWEB, wait_until="domcontentloaded", timeout=30000)
 
-            # Step 2: Try navigating to clock page
-            log("Step 2: Navigating to clock page...")
-            page.goto(WXWEB + CLOCK_HASH, wait_until="domcontentloaded", timeout=30000)
-            page.wait_for_timeout(8000)
+            # Step 2: WAIT for SPA to fully render
+            log("Step 2: Waiting for Vue app to load...")
+            ready = wait_for_spa(page, max_wait=45)
 
-            page.screenshot(path="daka_page.png", full_page=True)
-            log("Screenshot: daka_page.png")
+            if not ready:
+                log("SPA did not render in time, taking screenshot...")
+                page.screenshot(path="daka_stuck.png", full_page=True)
 
-            page_text = page.locator("body").inner_text().strip()[:500]
-            log(f"Page text ({len(page_text)} chars): {page_text[:200]}")
+            # Step 3: Navigate to clock page via hash
+            log("Step 3: Going to clock page...")
+            page.evaluate("window.location.hash = '#/PositioningClock'")
+            ready2 = wait_for_spa(page, max_wait=30)
+
+            page.screenshot(path="daka_clock.png", full_page=True)
+            log("Screenshot: daka_clock.png")
 
             if manual_mode:
-                log("Manual mode - operate browser then press Enter...")
+                log("Manual mode - operate then press Enter...")
                 input()
                 page.screenshot(path="daka_result.png")
                 return True
 
-            # Step 3: Look for the clock button
-            btn = page.locator("button").filter(has_text="打卡")
-            if btn.count() == 0:
-                btn = page.locator("button").filter(has_text="签到")
+            # Step 4: Try to click
+            body = page.locator("body").inner_text()
+            log(f"Body: {body[:300]}")
 
-            if btn.count() > 0:
-                log(f"Found {btn.count()} button(s), clicking...")
-                btn.first.click()
-                page.wait_for_timeout(5000)
+            buttons = page.locator("button").all()
+            log(f"Found {len(buttons)} buttons")
+            for btn in buttons[:10]:
+                try:
+                    log(f"  btn: '{btn.inner_text()}'")
+                except:
+                    pass
 
-                result = page.locator("body").inner_text()
-                if "成功" in result:
-                    log("SUCCESS: check-in complete!")
-                else:
-                    log(f"Result (first 200 chars): {result[:200]}")
-                page.screenshot(path="daka_done.png")
-                return True
+            for label in ["打卡", "签到", "提交"]:
+                btn = page.locator(f"button:has-text('{label}')")
+                if btn.count() > 0:
+                    log(f"Clicking '{label}' button!")
+                    btn.first.click()
+                    page.wait_for_timeout(5000)
+                    result = page.locator("body").inner_text()
+                    if "成功" in result:
+                        log("SUCCESS!")
+                    else:
+                        log(f"Result: {result[:200]}")
+                    page.screenshot(path="daka_done.png")
+                    return True
 
-            # Step 4: Check if already done
-            if "已打卡" in page_text or "打卡成功" in page_text:
-                log("Already checked in today")
-                return True
-
-            log("No clock button found (outside time window or already done)")
+            log("No clickable button found (time window issue or already done)")
             return True
 
         except PT as e:
@@ -137,18 +174,16 @@ def do_checkin(headless=True, manual_mode=False):
             return False
         finally:
             context.close()
-            log("Browser closed")
+            log("Done")
 
 
 def main():
     import argparse
-    ap = argparse.ArgumentParser(description="SWUN Auto Check-in")
-    ap.add_argument("-m", "--manual", action="store_true", help="Manual mode")
-    ap.add_argument("--show", action="store_true", help="Show browser")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-m", "--manual", action="store_true")
+    ap.add_argument("--show", action="store_true")
     args = ap.parse_args()
-
-    headless = not (args.show or args.manual)
-    ok = do_checkin(headless=headless, manual_mode=args.manual)
+    ok = do_checkin(headless=(not args.show and not args.manual), manual_mode=args.manual)
     sys.exit(0 if ok else 1)
 
 
