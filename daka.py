@@ -1,15 +1,9 @@
 """
-民大自动打卡 v9
+民大自动打卡 v10
 ===============
-完整流程:
-1. WAF bypass (--headless=new + Desktop UA + 1920 viewport + plugins spoof)
-2. 访问 wxweb → #/login
-3. 点击"统一身份认证登录" → appcas → authserver (自然跳转)
-4. CAS 表单提交 → redirect 回 wxweb/#/hoyOauth
-5. SPA 处理 OAuth token → 导航到打卡页
-6. 点击打卡
+新增网络请求监控，诊断 queryPersonDetailInfo API 问题
 """
-import os, sys, time, traceback
+import os, sys, time, json, traceback
 from datetime import datetime
 from playwright.sync_api import sync_playwright, TimeoutError as PT
 
@@ -33,23 +27,17 @@ def log(msg):
 
 
 def do_cas_login(page):
-    """Fill and submit the CAS login form on the current page.
-    Assumes we're already on the authserver login page."""
-
-    # Switch from QR to account login
     page.click("#userNameLogin_a")
     page.wait_for_timeout(2000)
     log("Switched to account login tab")
 
-    # Fill credentials
     page.fill("#username", USERNAME)
     page.fill("#password", PASSWORD)
 
-    # Encrypt password using page's own encryptPassword()
     salt = page.evaluate("document.getElementById('pwdEncryptSalt').value")
     if not salt:
         salt = "rjBFAaHsNkKAhpoi"
-    log(f"Encrypting...")
+    log("Encrypting password...")
 
     encrypted = page.evaluate(f"""
         encryptPassword(document.getElementById('password').value, "{salt}")
@@ -68,59 +56,14 @@ def do_cas_login(page):
     return "wxweb" in page.url or "appcas" in page.url
 
 
-def find_and_click_clock(page, body_text=""):
-    """Click the central check-in circle on the clock page."""
-
-    # Write full page HTML for debugging
-    html = page.content()
-    with open("page.html", "w", encoding="utf-8") as f:
-        f.write(html[:50000])
-    log(f"Page HTML saved ({len(html)} bytes)")
-
-    # Find and click the center circle by its CSS path
-    # The circle has nested structure: .position-circle > .circle-anim-first > .circle-title > .title-head + .title-body
-    log("Clicking position-circle...")
-    circle = page.locator(".position-circle")
-    if circle.count() > 0:
-        box = circle.first.bounding_box()
-        if box:
-            log(f"Circle box: x={box['x']:.0f} y={box['y']:.0f} w={box['width']:.0f} h={box['height']:.0f}")
-            # Click the center
-            page.mouse.click(box['x'] + box['width']/2, box['y'] + box['height']/2)
-        else:
-            circle.first.click()
-        page.wait_for_timeout(3000)
-
-        # Check network for check-in API call
-        result = page.locator("body").inner_text().strip()
-        with open("result.txt", "w", encoding="utf-8") as f:
-            f.write(result)
-
-        # Check for toast or dialog
-        toast = page.evaluate("""
-            (function() {
-                var t = document.querySelector('.van-toast__text');
-                var d = document.querySelector('.van-dialog__message');
-                return {toast: t ? t.textContent : '', dialog: d ? d.textContent : ''};
-            })()
-        """)
-        log(f"Toast/dialog: {toast}")
-
-        # Check URL change
-        log(f"URL after click: {page.url[:120]}")
-        page.screenshot(path="daka_done.png")
-        return True
-
-    log("No .position-circle found")
-    return False
-
-
 def do_checkin(headless=True, manual_mode=False):
     if not headless:
         manual_mode = True
 
     log("=" * 40)
-    log("Launching Chromium (WAF bypass)...")
+    log("v10 - Launching Chromium...")
+
+    api_log = []
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -147,7 +90,7 @@ def do_checkin(headless=True, manual_mode=False):
         page.add_init_script("""
             Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
         """)
-        # Fake time to be within check-in window (21:35 BJT = 13:35 UTC)
+        # Fake time to check-in window (21:35 BJT = 13:35 UTC)
         page.add_init_script("""
             (function() {
                 const TARGET_MS = new Date('2026-07-29T13:35:00Z').getTime();
@@ -173,40 +116,52 @@ def do_checkin(headless=True, manual_mode=False):
         """)
         log("Date faked to 21:35 BJT")
 
+        # Monitor ALL API requests/responses on wxweb domain
+        def on_response(resp):
+            url = resp.url
+            if "gyglxt" in url or "swun" in url:
+                if any(kw in url for kw in ["queryPerson", "clock", "check", "punch", "sign", "attendance", "login", "oauth", "token", "info", "detail"]):
+                    try:
+                        status = resp.status
+                        body = ""
+                        try:
+                            body = resp.text()[:300]
+                        except:
+                            body = "[binary/non-text]"
+                        api_log.append(f"  [{status}] {url[:120]}")
+                        if status >= 400 or "error" in body.lower():
+                            api_log.append(f"    Body: {body[:200]}")
+                    except:
+                        api_log.append(f"  [ERR] {url[:120]}")
+
+        page.on("response", on_response)
+
         try:
             # === Step 1: Load wxweb ===
             log("Loading wxweb...")
             page.goto(WXWEB, wait_until="networkidle", timeout=60000)
             page.wait_for_timeout(3000)
             log(f"URL: {page.url[:120]}")
-            log(f"Title: {page.title()}")
 
             # === Step 2: Login flow ===
             if "authserver" in page.url:
-                # Already redirected to CAS
-                log("=> Direct CAS redirect on first visit")
+                log("=> Direct CAS redirect")
                 do_cas_login(page)
-                # Wait for redirect back
                 try:
                     page.wait_for_url("**/wxweb/**", timeout=30000)
-                    log("Redirected to wxweb")
                 except PT:
                     pass
 
             if "#/login" in page.url or "/login" in page.url:
                 log("=> On SPA login page")
-                # Click unified auth link
                 page.locator("text=统一身份认证登录").first.click()
                 page.wait_for_timeout(3000)
                 log(f"After click: {page.url[:120]}")
 
-                # Wait for CAS page to appear (SPA -> appcas -> authserver chain)
                 try:
                     page.wait_for_url("**/authserver.swun.edu.cn/**", timeout=20000)
                     log("=> On CAS login page")
                     do_cas_login(page)
-
-                    # Wait for CAS to redirect back to wxweb
                     try:
                         page.wait_for_url("**/wxweb/**", timeout=30000)
                         log("=> Back on wxweb after CAS")
@@ -215,30 +170,49 @@ def do_checkin(headless=True, manual_mode=False):
                 except PT:
                     log(f"No authserver redirect, URL: {page.url[:120]}")
 
-            # === Step 3: Wait for SPA to stabilize ===
+            # === Step 3: Navigate to clock page ===
             log(f"Current URL: {page.url[:120]}")
             page.wait_for_timeout(5000)
 
-            # If we're on #/hoyOauth, wait for SPA to finish token processing
-            if "hoyOauth" in page.url:
-                log("=> On OAuth callback, waiting for SPA to process token...")
-                # Instead of waiting for hash to change (which may not happen
-                # in headless), wait a bit then manually navigate
-                page.wait_for_timeout(15000)
-                log(f"After wait: {page.url[:120]}")
-
-            # === Step 4: Navigate to clock page ===
             log("=> Navigating to PositioningClock...")
             try:
                 page.goto(f"{WXWEB}#/PositioningClock", wait_until="networkidle", timeout=30000)
             except PT:
                 log("PositioningClock page load timeout")
-            page.wait_for_timeout(8000)
             log(f"Clock URL: {page.url[:120]}")
 
-            # Wait for API calls and render
-            page.wait_for_timeout(15000)
+            # Wait longer for all API calls
+            log("Waiting for API calls to settle (30s)...")
+            page.wait_for_timeout(30000)
+            log("API wait complete")
 
+            # Dump API log
+            log(f"--- API calls captured ({len(api_log)}) ---")
+            for entry in api_log[-30:]:  # last 30 entries
+                log(entry)
+
+            # Check localStorage/sessionStorage for auth tokens
+            storage = page.evaluate("""
+                (function() {
+                    var ls = {};
+                    try {
+                        for (var i = 0; i < localStorage.length; i++) {
+                            var k = localStorage.key(i);
+                            ls['LS:'+k] = localStorage.getItem(k).substring(0, 80);
+                        }
+                        for (var i = 0; i < sessionStorage.length; i++) {
+                            var k = sessionStorage.key(i);
+                            ls['SS:'+k] = sessionStorage.getItem(k).substring(0, 80);
+                        }
+                    } catch(e) { ls['error'] = e.toString(); }
+                    return ls;
+                })()
+            """)
+            log(f"Storage keys: {list(storage.keys())}")
+            for k, v in storage.items():
+                log(f"  {k}: {v}")
+
+            # Page state
             body = page.locator("body").inner_text().strip()
             with open("page_text.txt", "w", encoding="utf-8") as f:
                 f.write(body)
@@ -250,8 +224,31 @@ def do_checkin(headless=True, manual_mode=False):
                 input()
                 return True
 
-            # === Step 5: Clock in ===
-            find_and_click_clock(page, body)
+            # === Step 5: Click check-in ===
+            circle = page.locator(".position-circle")
+            if circle.count() > 0:
+                box = circle.first.bounding_box()
+                if box:
+                    log(f"Circle: x={box['x']:.0f} y={box['y']:.0f} w={box['width']:.0f} h={box['height']:.0f}")
+                    page.mouse.click(box['x'] + box['width']/2, box['y'] + box['height']/2)
+                else:
+                    circle.first.click()
+                page.wait_for_timeout(5000)
+
+                result = page.locator("body").inner_text().strip()
+                with open("result.txt", "w", encoding="utf-8") as f:
+                    f.write(result)
+
+                toast = page.evaluate("""
+                    (function() {
+                        var t = document.querySelector('.van-toast__text');
+                        var d = document.querySelector('.van-dialog__message');
+                        return {toast: t ? t.textContent : '', dialog: d ? d.textContent : ''};
+                    })()
+                """)
+                log(f"Toast/dialog after click: {toast}")
+                log(f"URL after click: {page.url[:120]}")
+                page.screenshot(path="daka_done.png")
 
             return True
 
