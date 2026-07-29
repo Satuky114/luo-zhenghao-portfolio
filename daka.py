@@ -228,8 +228,8 @@ def do_checkin(headless=True, manual_mode=False):
             page.wait_for_timeout(8000)
             log(f"Clock URL: {page.url[:120]}")
 
-            # Wait for API calls
-            page.wait_for_timeout(5000)
+            # Wait for API calls and render
+            page.wait_for_timeout(15000)
 
             body = page.locator("body").inner_text().strip()
             with open("page_text.txt", "w", encoding="utf-8") as f:
