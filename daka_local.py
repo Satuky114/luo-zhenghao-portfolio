@@ -101,13 +101,14 @@ def do_checkin(manual=False, headless=True):
             headless=headless,
             geolocation={"latitude": SCHOOL_LAT, "longitude": SCHOOL_LNG},
             permissions=["geolocation"],
-            viewport={"width": 390, "height": 844},
-            user_agent=IOS_UA,
+            viewport={"width": 1280, "height": 720},
+            user_agent=DESKTOP_UA,
             locale="zh-CN",
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--disable-features=IsolateOrigins,site-per-process",
                 "--disable-site-isolation-trials",
+                "--headless=new",
             ],
         )
         page = context.new_page()
@@ -115,6 +116,8 @@ def do_checkin(manual=False, headless=True):
         # 反检测
         page.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {get: ()=>false});
+            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+            Object.defineProperty(navigator, 'languages', {get: () => ['zh-CN', 'zh', 'en']});
         """)
 
         try:

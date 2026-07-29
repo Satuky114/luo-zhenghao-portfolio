@@ -75,24 +75,25 @@ def do_checkin(headless=True, manual_mode=False):
                 "--disable-dev-shm-usage",
                 "--disable-features=IsolateOrigins,site-per-process",
                 "--disable-site-isolation-trials",
+                "--headless=new",  # Use new headless mode
             ],
         )
 
         context = browser.new_context(
             geolocation={"latitude": SCHOOL_LAT, "longitude": SCHOOL_LNG},
             permissions=["geolocation"],
-            viewport={"width": 390, "height": 844},
+            viewport={"width": 1920, "height": 1080},
             user_agent=DESKTOP_UA,
             locale="zh-CN",
         )
 
         page = context.new_page()
 
-        # Hide webdriver flag
+        # GPS spoofing + anti-detection
+        # navigator.webdriver is already False with our Chrome args
+        # Faking navigator.plugins helps evade WAF
         page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {get: () => false});
             Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-            Object.defineProperty(navigator, 'languages', {get: () => ['zh-CN', 'zh', 'en']});
         """)
 
         try:
