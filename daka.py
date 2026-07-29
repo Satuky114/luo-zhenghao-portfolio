@@ -88,10 +88,17 @@ def do_checkin(headless=True, manual_mode=False):
 
         page = context.new_page()
 
-        # Apply stealth to hide automation (v2 API)
+        # Apply stealth - pass a Chrome UA for the lib to parse internally,
+        # but don't let it override our iOS UA in the browser page.
         stealth = Stealth(
+            navigator_user_agent_override=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            navigator_user_agent=False,  # Don't override our iOS UA
+            sec_ch_ua=False,             # Not applicable for iOS Safari
             navigator_platform_override="iPhone",
-            navigator_user_agent_override=IOS_UA,
             navigator_languages_override=("zh-CN", "zh"),
             navigator_vendor_override="Apple Computer, Inc.",
         )
