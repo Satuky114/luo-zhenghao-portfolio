@@ -1,21 +1,22 @@
 """
-民大自动打卡 v6
+民大自动打卡 v7
 ===============
-WAF 绕过: playwright-stealth + 真实 iPhone User-Agent + 反检测脚本
+WAF 绕过: --headless=new + Desktop Chrome UA + site-isolation 禁用
+经过实际测试，iOS UA 被 WAF 拦截，桌面 Chrome UA 可以正常通过。
 """
 import os, sys, time, traceback
 from datetime import datetime
 from playwright.sync_api import sync_playwright, TimeoutError as PT
-from playwright_stealth import Stealth
 
 SCHOOL_LAT = 30.562897
 SCHOOL_LNG = 103.966624
 WXWEB = "https://gyglxt.swun.edu.cn/wxweb/"
 
-IOS_UA = (
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_7 like Mac OS X) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-    "Version/16.0 Mobile/15E148 Safari/604.1"
+# Desktop Chrome UA - iOS UA gets blocked by WAF, desktop Chrome works
+DESKTOP_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/130.0.0.0 Safari/537.36"
 )
 
 USERNAME = os.environ.get("SWUN_USERNAME") or ""
@@ -46,7 +47,6 @@ def wait_for_content(page, timeout=60):
             if text and len(text) > 30:
                 log(f"Content after {i}s: {text[:120]}")
                 return text
-            # Or detect Vue/van-ui components
             if page.locator("#app, .van-nav-bar, .bg-box, .position-clock").count() > 0:
                 text = page.locator("body").inner_text().strip()
                 log(f"App rendered after {i}s: {text[:120]}")
@@ -64,7 +64,7 @@ def do_checkin(headless=True, manual_mode=False):
     if not headless:
         manual_mode = True
 
-    log("Launching Chromium (stealth mode)...")
+    log("Launching Chromium (WAF bypass mode)...")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -73,6 +73,8 @@ def do_checkin(headless=True, manual_mode=False):
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
+                "--disable-features=IsolateOrigins,site-per-process",
+                "--disable-site-isolation-trials",
             ],
         )
 
@@ -80,35 +82,17 @@ def do_checkin(headless=True, manual_mode=False):
             geolocation={"latitude": SCHOOL_LAT, "longitude": SCHOOL_LNG},
             permissions=["geolocation"],
             viewport={"width": 390, "height": 844},
-            user_agent=IOS_UA,
+            user_agent=DESKTOP_UA,
             locale="zh-CN",
-            is_mobile=True,
-            has_touch=True,
         )
 
         page = context.new_page()
 
-        # Apply stealth - pass a Chrome UA for the lib to parse internally,
-        # but don't let it override our iOS UA in the browser page.
-        stealth = Stealth(
-            navigator_user_agent_override=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-            navigator_user_agent=False,  # Don't override our iOS UA
-            sec_ch_ua=False,             # Not applicable for iOS Safari
-            navigator_platform_override="iPhone",
-            navigator_languages_override=("zh-CN", "zh"),
-            navigator_vendor_override="Apple Computer, Inc.",
-        )
-        stealth.apply_stealth_sync(page)
-
-        # Stealth handles WebDriver/platform/webgl spoofing
-        # Extra: additional mobile-specific properties
+        # Hide webdriver flag
         page.add_init_script("""
-            Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 4});
-            Object.defineProperty(navigator, 'deviceMemory', {get: () => 4});
+            Object.defineProperty(navigator, 'webdriver', {get: () => false});
+            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+            Object.defineProperty(navigator, 'languages', {get: () => ['zh-CN', 'zh', 'en']});
         """)
 
         try:
