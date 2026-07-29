@@ -1,8 +1,8 @@
 """
-民大自动打卡 v7
+民大自动打卡 v8
 ===============
-WAF 绕过: --headless=new + Desktop Chrome UA + site-isolation 禁用
-经过实际测试，iOS UA 被 WAF 拦截，桌面 Chrome UA 可以正常通过。
+WAF 绕过验证: --headless=new + Desktop Chrome UA + 1920 viewport
+完整流程: WAF → SPA登录页 → CAS认证 → 定位打卡
 """
 import os, sys, time, traceback
 from datetime import datetime
@@ -11,8 +11,8 @@ from playwright.sync_api import sync_playwright, TimeoutError as PT
 SCHOOL_LAT = 30.562897
 SCHOOL_LNG = 103.966624
 WXWEB = "https://gyglxt.swun.edu.cn/wxweb/"
+CAS_REDIRECT = "https://gyglxt.swun.edu.cn/appcas/ssoMobileLogin.jsp"
 
-# Desktop Chrome UA - iOS UA gets blocked by WAF, desktop Chrome works
 DESKTOP_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -28,36 +28,52 @@ def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {safe}")
 
 
-def cas_login(page):
-    log("CAS login...")
-    page.wait_for_url("**/authserver.swun.edu.cn/**", timeout=20000)
-    page.wait_for_selector("#username", timeout=10000)
+def cas_login_full(page):
+    """
+    Full CAS login flow:
+    1. Navigate to CAS with service redirect
+    2. Switch from QR code tab to account login tab
+    3. Fill credentials, encrypt password, submit form
+    """
+    cas_url = f"https://authserver.swun.edu.cn/authserver/login?service={CAS_REDIRECT}"
+    log(f"Going to CAS: {cas_url[:80]}...")
+    page.goto(cas_url, timeout=30000, wait_until="networkidle")
+    page.wait_for_timeout(3000)
+
+    # CAS shows QR code by default. Click '账号登录' tab.
+    page.click("#userNameLogin_a")
+    page.wait_for_timeout(2000)
+    log("Switched to account login")
+
+    # Fill credentials
     page.fill("#username", USERNAME)
     page.fill("#password", PASSWORD)
-    page.click("button[type='submit'], input[type='submit']")
-    page.wait_for_url("**/wxweb/**", timeout=30000)
-    log("CAS login OK")
 
+    # Get encryption salt and encrypt password
+    salt = page.evaluate("document.getElementById('pwdEncryptSalt').value")
+    if not salt:
+        salt = "rjBFAaHsNkKAhpoi"  # Fallback default salt from login.js
+    log(f"Encrypting with salt: {salt[:10]}...")
 
-def wait_for_content(page, timeout=60):
-    """Wait for page body to have actual content"""
-    for i in range(timeout):
-        try:
-            text = page.locator("body").inner_text().strip()
-            if text and len(text) > 30:
-                log(f"Content after {i}s: {text[:120]}")
-                return text
-            if page.locator("#app, .van-nav-bar, .bg-box, .position-clock").count() > 0:
-                text = page.locator("body").inner_text().strip()
-                log(f"App rendered after {i}s: {text[:120]}")
-                return text
-        except:
-            pass
-        time.sleep(1)
-    try:
-        return page.locator("body").inner_text().strip()
-    except:
-        return ""
+    # Use CAS's own encryptPassword function from encrypt.js
+    encrypted = page.evaluate(f"""
+        encryptPassword(document.getElementById('password').value, "{salt}")
+    """)
+    # Set the encrypted password back
+    page.evaluate(f"""
+        document.getElementById('password').value = "{encrypted}";
+        document.getElementById('saltPassword').value = "{encrypted}";
+    """)
+    log("Password encrypted")
+
+    # Monitor POST response
+    page.screenshot(path="daka_cas.png")
+    log("Submitting CAS form...")
+    page.evaluate("document.querySelector('form').submit()")
+    page.wait_for_timeout(10000)
+
+    log(f"CAS result URL: {page.url[:120]}")
+    return "wxweb" in page.url or "appcas" in page.url
 
 
 def do_checkin(headless=True, manual_mode=False):
@@ -75,7 +91,7 @@ def do_checkin(headless=True, manual_mode=False):
                 "--disable-dev-shm-usage",
                 "--disable-features=IsolateOrigins,site-per-process",
                 "--disable-site-isolation-trials",
-                "--headless=new",  # Use new headless mode
+                "--headless=new",
             ],
         )
 
@@ -88,39 +104,66 @@ def do_checkin(headless=True, manual_mode=False):
         )
 
         page = context.new_page()
-
-        # GPS spoofing + anti-detection
-        # navigator.webdriver is already False with our Chrome args
-        # Faking navigator.plugins helps evade WAF
+        # Only spoof plugins (webdriver=False is already handled by Chrome args)
         page.add_init_script("""
             Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
         """)
 
         try:
-            # Step 1: Load home page
-            log("Loading home page...")
+            # Step 1: Load wxweb home
+            log("Loading wxweb...")
             page.goto(WXWEB, wait_until="networkidle", timeout=60000)
+            page.wait_for_timeout(5000)
+            log(f"URL: {page.url[:100]}")
 
-            # CAS
+            # Step 2: Handle CAS / login
             if "authserver" in page.url:
+                log("CAS redirect detected")
                 if not USERNAME or not PASSWORD:
-                    log("ERROR: Need credentials")
+                    log("ERROR: No credentials in env")
                     return False
-                cas_login(page)
-                page.goto(WXWEB, wait_until="networkidle", timeout=60000)
+                ok = cas_login_full(page)
+                if not ok:
+                    log("CAS login may have failed, but continuing...")
+                # Go back to wxweb
+                page.goto(WXWEB, wait_until="networkidle", timeout=30000)
+                page.wait_for_timeout(5000)
 
-            # Step 2: Wait for SPA
-            log("Waiting for SPA render...")
-            body = wait_for_content(page, timeout=50)
-            log(f"Home body ({len(body)} chars): {body[:200]}")
-            page.screenshot(path="daka_home.png", full_page=True)
+            # Step 3: Handle SPA login page
+            if "#/login" in page.url or "/login" in page.url:
+                log("On SPA login page - clicking unified auth...")
+                # Click the "统一身份认证登录，点击进入>>" element
+                auth_elem = page.locator("text=统一身份认证登录").first
+                if auth_elem.count() > 0:
+                    auth_elem.click()
+                    page.wait_for_timeout(5000)
+                    log(f"After click URL: {page.url[:100]}")
 
-            # Step 3: Navigate to clock via hash
-            log("Going to clock page...")
+                    # Now we should be on CAS
+                    if "authserver" in page.url:
+                        if not USERNAME or not PASSWORD:
+                            log("ERROR: No credentials")
+                            return False
+                        ok = cas_login_full(page)
+                        if ok:
+                            # After CAS, wait for redirect back to wxweb
+                            try:
+                                page.wait_for_url("**/wxweb/**", timeout=30000)
+                            except PT:
+                                log(f"Post-CAS URL: {page.url[:100]}")
+                    else:
+                        log("No CAS redirect after clicking unified auth")
+                else:
+                    log("Unified auth element not found on login page")
+
+            # Step 4: Navigate to clock page
+            log(f"Pre-clock URL: {page.url[:100]}")
             page.evaluate("window.location.hash = '#/PositioningClock'")
-            time.sleep(3)
-            body2 = wait_for_content(page, timeout=30)
-            log(f"Clock body ({len(body2)} chars): {body2[:200]}")
+            page.wait_for_timeout(5000)
+            log(f"Clock page URL: {page.url[:100]}")
+
+            body = page.locator("body").inner_text().strip()
+            log(f"Clock body ({len(body)} chars): {body[:200]}")
             page.screenshot(path="daka_clock.png", full_page=True)
 
             if manual_mode:
@@ -129,12 +172,12 @@ def do_checkin(headless=True, manual_mode=False):
                 page.screenshot(path="daka_result.png")
                 return True
 
-            # Step 4: Find & click button
+            # Step 5: Find and click check-in button
             btns = page.locator("button").all()
             log(f"Buttons found: {len(btns)}")
             for i, b in enumerate(btns[:10]):
                 try:
-                    log(f"  [{i}] '{b.inner_text()}'")
+                    log(f"  [{i}] '{b.inner_text()[:40]}'")
                 except:
                     pass
 
@@ -144,15 +187,15 @@ def do_checkin(headless=True, manual_mode=False):
                     log(f"Clicking '{label}'!")
                     btn.first.click()
                     time.sleep(5)
-                    r = page.locator("body").inner_text()
-                    log(f"Result: {r[:250]}")
+                    result = page.locator("body").inner_text()
+                    log(f"Result: {result[:250]}")
                     page.screenshot(path="daka_done.png")
                     return True
 
-            if "已打卡" in body2:
+            if "已打卡" in body:
                 log("Already checked in today")
             else:
-                log("No button (outside time window?)")
+                log("No button found (outside clock window?)")
             return True
 
         except PT as e:
