@@ -69,41 +69,49 @@ def do_cas_login(page):
 
 
 def find_and_click_clock(page, body_text=""):
-    """Try to find and click the check-in button on the clock page."""
+    """Click the central check-in circle on the clock page."""
 
-    # The page shows "考勤打卡" in the center circle. This IS the button.
-    log(f"Searching for check-in button in: {body_text[:200]}")
+    # Write full page HTML for debugging
+    html = page.content()
+    with open("page.html", "w", encoding="utf-8") as f:
+        f.write(html[:50000])
+    log(f"Page HTML saved ({len(html)} bytes)")
 
-    # Try multiple approaches to click the check-in button
-    # Approach 1: Click "考勤打卡" text
-    for text in ["考勤打卡", "打卡", "考勤", "签到", "签退"]:
-        elem = page.locator(f"text={text}").first
-        if elem.count() > 0:
-            log(f"Found '{text}' element, clicking...")
-            elem.click()
-            page.wait_for_timeout(5000)
+    # Find and click the center circle by its CSS path
+    # The circle has nested structure: .position-circle > .circle-anim-first > .circle-title > .title-head + .title-body
+    log("Clicking position-circle...")
+    circle = page.locator(".position-circle")
+    if circle.count() > 0:
+        box = circle.first.bounding_box()
+        if box:
+            log(f"Circle box: x={box['x']:.0f} y={box['y']:.0f} w={box['width']:.0f} h={box['height']:.0f}")
+            # Click the center
+            page.mouse.click(box['x'] + box['width']/2, box['y'] + box['height']/2)
+        else:
+            circle.first.click()
+        page.wait_for_timeout(3000)
 
-            # Check result: it might show a success toast or dialog
-            result = page.locator("body").inner_text().strip()
-            with open("result.txt", "w", encoding="utf-8") as f:
-                f.write(result)
-            log(f"After click '{text}': {result[:300]}")
-            page.screenshot(path="daka_done.png")
-            return True
+        # Check network for check-in API call
+        result = page.locator("body").inner_text().strip()
+        with open("result.txt", "w", encoding="utf-8") as f:
+            f.write(result)
 
-    # Approach 2: Click .position-circle or .circle-anim-first
-    for sel in [".position-circle", ".circle-anim-first", ".circle-title"]:
-        elem = page.locator(sel).first
-        if elem.count() > 0:
-            log(f"Clicking {sel}...")
-            elem.click()
-            page.wait_for_timeout(5000)
-            result = page.locator("body").inner_text().strip()
-            log(f"Result: {result[:200]}")
-            page.screenshot(path="daka_done.png")
-            return True
+        # Check for toast or dialog
+        toast = page.evaluate("""
+            (function() {
+                var t = document.querySelector('.van-toast__text');
+                var d = document.querySelector('.van-dialog__message');
+                return {toast: t ? t.textContent : '', dialog: d ? d.textContent : ''};
+            })()
+        """)
+        log(f"Toast/dialog: {toast}")
 
-    log("No button found")
+        # Check URL change
+        log(f"URL after click: {page.url[:120]}")
+        page.screenshot(path="daka_done.png")
+        return True
+
+    log("No .position-circle found")
     return False
 
 

@@ -37,3 +37,4 @@ jobs:
             daka*.png
             cas_login.png
             *.txt
+            *.html
