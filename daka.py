@@ -108,6 +108,21 @@ def do_checkin(headless=True, manual_mode=False):
         page.add_init_script("""
             Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
         """)
+        # Override Date to simulate check-in window (21:35 BJT = 13:35 UTC)
+        page.add_init_script("""
+            const TARGET = new Date('2026-07-29T13:35:00Z').getTime();
+            const RealDate = Date;
+            window._originalNow = RealDate.now.bind(RealDate);
+            Date = function(...args) {
+                if (args.length === 0) return new RealDate(TARGET);
+                return new RealDate(...args);
+            };
+            Date.now = () => TARGET;
+            Date.parse = RealDate.parse.bind(RealDate);
+            Date.UTC = RealDate.UTC.bind(RealDate);
+            Date.prototype = RealDate.prototype;
+        """)
+        log("Date override: 21:35 BJT")
 
         try:
             # Step 1: Load wxweb home
@@ -156,14 +171,21 @@ def do_checkin(headless=True, manual_mode=False):
                 else:
                     log("Unified auth element not found on login page")
 
-            # Step 4: Navigate to clock page
+            # Step 4: Handle OAuth callback or navigate to clock page
             log(f"Pre-clock URL: {page.url[:100]}")
+
+            # If CAS returned us to #/hoyOauth, wait for SPA to process token
+            if "hoyOauth" in page.url or "oauth" in page.url.lower():
+                log("Detected OAuth callback, waiting for token processing...")
+                page.wait_for_timeout(5000)
+                log(f"Post-OAuth URL: {page.url[:100]}")
+
             page.evaluate("window.location.hash = '#/PositioningClock'")
             page.wait_for_timeout(5000)
             log(f"Clock page URL: {page.url[:100]}")
 
             body = page.locator("body").inner_text().strip()
-            log(f"Clock body ({len(body)} chars): {body[:200]}")
+            log(f"Clock body ({len(body)} chars): {body[:300]}")
             page.screenshot(path="daka_clock.png", full_page=True)
 
             if manual_mode:
