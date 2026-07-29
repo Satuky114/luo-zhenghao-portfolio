@@ -2,13 +2,13 @@
 民大自动打卡脚本 v4
 ====================
 
-技术策略：
-  1. 先访问 wxweb/ 首页获取 WAF Cookie 和 JS 签名
-  2. 等 WAF JS 执行完 + Vue 应用加载
-  3. 用 page.evaluate 导航到打卡页面（SPA 内部路由）
-  4. 找到按钮点击打卡
+策略：
+  1. 访问 wxweb/ 等待 Vue 加载
+  2. SPA 内部导航到打卡页
+  3. 点按钮打卡
 """
 import os, sys, time, traceback
+from datetime import datetime
 from playwright.sync_api import sync_playwright, TimeoutError as PT
 
 SCHOOL_LAT = 30.562897
@@ -27,25 +27,27 @@ PASSWORD = os.environ.get("SWUN_PASSWORD") or ""
 
 
 def log(msg):
-    print(f"[{time.strftime('%H:%M:%S')}] {msg}")
+    stamp = datetime.now().strftime("%H:%M:%S")
+    safe = msg.encode("ascii", errors="replace").decode("ascii")
+    print(f"[{stamp}] {safe}")
 
 
 def cas_login(page):
-    log("🔐 CAS 登录...")
+    log("CAS login page detected, logging in...")
     page.wait_for_url("**/authserver.swun.edu.cn/**", timeout=20000)
     page.wait_for_selector("#username", timeout=10000)
     page.fill("#username", USERNAME)
     page.fill("#password", PASSWORD)
     page.click("button[type='submit'], input[type='submit']")
     page.wait_for_url("**/wxweb/**", timeout=30000)
-    log("✅ CAS 登录完成")
+    log("CAS login OK")
 
 
 def do_checkin(headless=True, manual_mode=False):
     if not headless:
         manual_mode = True
 
-    log("🚀 启动 Chromium...")
+    log("Launching Chromium...")
 
     with sync_playwright() as p:
         context = p.chromium.launch_persistent_context(
@@ -59,141 +61,94 @@ def do_checkin(headless=True, manual_mode=False):
         )
         page = context.new_page()
 
-        # 反检测
         page.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {get: () => false});
-            Object.defineProperty(navigator, 'platform', {get: () => 'iPhone'});
         """)
 
         try:
-            # ====== Step 1: 先访问首页，让 WAF 放行 ======
-            log("📍 Step 1: 访问首页获取 Cookie...")
+            # Step 1: Visit home page, get WAF cookies
+            log("Step 1: Visiting home page...")
             page.goto(WXWEB, wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(5000)
 
-            # 等 WAF JS 执行 + 设置 Cookie
-            page.wait_for_timeout(8000)
+            log(f"URL: {page.url[:120]}")
 
-            log(f"首页 URL: {page.url[:100]}")
-            log(f"HTML 长度: {len(page.content())}")
-
-            # 如果跳去了 CAS
+            # Handle CAS redirect
             if "authserver" in page.url:
                 if not USERNAME or not PASSWORD:
-                    log("❌ 需要登录凭据")
+                    log("ERROR: Login required but no credentials set")
+                    log("  Set SWUN_USERNAME and SWUN_PASSWORD env vars")
                     return False
                 cas_login(page)
-                # 再给我们一次加载机会
-                page.wait_for_timeout(8000)
+                page.wait_for_timeout(5000)
 
-            # ====== Step 2: 截图首页诊断 ======
-            page.screenshot(path="daka_home.png", full_page=True)
-            log("📸 daka_home.png")
-
-            # ====== Step 3: SPA 内部导航到打卡页 ======
-            log("📍 Step 3: 导航到打卡页面...")
-
-            # 用 JS 触发 Vue Router 导航
-            page.evaluate(f"""
-                // 方式1: 修改 hash
-                window.location.hash = '{CLOCK_HASH}';
-                // 方式2: 如果页面使用了 Vue Router，尝试直接推入路由
-                try {{
-                    const app = document.querySelector('#app').__vue_app__;
-                    if (app) {{
-                        const router = app.config.globalProperties.$router;
-                        if (router) router.push('{CLOCK_HASH}');
-                    }}
-                }} catch(e) {{}}
-            """)
-
-            # 等新页面渲染
+            # Step 2: Try navigating to clock page
+            log("Step 2: Navigating to clock page...")
+            page.goto(WXWEB + CLOCK_HASH, wait_until="domcontentloaded", timeout=30000)
             page.wait_for_timeout(8000)
 
-            log(f"打卡页 URL: {page.url[:100]}")
-            page.screenshot(path="daka_clock_page.png", full_page=True)
-            log("📸 daka_clock_page.png")
+            page.screenshot(path="daka_page.png", full_page=True)
+            log("Screenshot: daka_page.png")
 
-            body_text = page.locator("body").inner_text().strip()
-            log(f"Body ({len(body_text)} 字符): {body_text[:300]}")
+            page_text = page.locator("body").inner_text().strip()[:500]
+            log(f"Page text ({len(page_text)} chars): {page_text[:200]}")
 
-            # ====== Step 4: 等待地图组件 ======
-            log("📍 Step 4: 等待页面组件...")
-            try:
-                page.wait_for_selector(".position-clock, .location, .bg-box, [class*='clock']", timeout=15000)
-                log("✅ 组件已加载")
-                page.wait_for_timeout(3000)
-                body_text = page.locator("body").inner_text().strip()
-                log(f"Body ({len(body_text)} 字符): {body_text[:300]}")
-            except PT:
-                log("⚠️ 组件未在预期时间加载")
-
-            page.screenshot(path="daka_ready.png", full_page=True)
-
-            # ====== 手动模式 ======
             if manual_mode:
-                log("👆 手动模式：操作浏览器后按 Enter...")
+                log("Manual mode - operate browser then press Enter...")
                 input()
                 page.screenshot(path="daka_result.png")
                 return True
 
-            # ====== Step 5: 检查状态并打卡 ======
-            if not body_text:
-                log("⚠️ Body 仍为空——WAF 确实拦截了")
-                log("   需要真实手机 Cookie 来跨过 WAF")
-                log("   建议今晚 21:30 用手机登录后导出 Cookie")
-                return True  # 不报错
+            # Step 3: Look for the clock button
+            btn = page.locator("button").filter(has_text="打卡")
+            if btn.count() == 0:
+                btn = page.locator("button").filter(has_text="签到")
 
-            if "已打卡" in body_text or "无需" in body_text:
-                log("✅ 已打卡或不在时段")
+            if btn.count() > 0:
+                log(f"Found {btn.count()} button(s), clicking...")
+                btn.first.click()
+                page.wait_for_timeout(5000)
+
+                result = page.locator("body").inner_text()
+                if "成功" in result:
+                    log("SUCCESS: check-in complete!")
+                else:
+                    log(f"Result (first 200 chars): {result[:200]}")
+                page.screenshot(path="daka_done.png")
                 return True
 
-            # 查找按钮
-            buttons = page.locator("button").all()
-            log(f"找到 {len(buttons)} 个按钮:")
-            for i, btn in enumerate(buttons[:10]):
-                try:
-                    log(f"  [{i}] '{btn.inner_text()}' class={btn.get_attribute('class')}")
-                except:
-                    pass
+            # Step 4: Check if already done
+            if "已打卡" in page_text or "打卡成功" in page_text:
+                log("Already checked in today")
+                return True
 
-            # 尝试点击
-            for text in ["打卡", "签到", "提交"]:
-                btn = page.locator(f"button:has-text('{text}')")
-                if btn.count() > 0:
-                    log(f"🎯 找到 '按钮'——点击！")
-                    btn.first.click()
-                    page.wait_for_timeout(5000)
-                    body = page.locator("body").inner_text()
-                    if "成功" in body:
-                        log("🎉 打卡成功！")
-                    else:
-                        log(f"反馈: {body[:200]}")
-                    page.screenshot(path="daka_done.png")
-                    return True
-
-            log("ℹ️ 未找到打卡按钮（可能不在时段或已打卡）")
+            log("No clock button found (outside time window or already done)")
             return True
 
         except PT as e:
-            log(f"❌ Timeout: {e}")
-            page.screenshot(path="daka_error.png")
+            log(f"Timeout: {e}")
+            try: page.screenshot(path="daka_error.png")
+            except: pass
             return False
         except Exception as e:
-            log(f"❌ {traceback.format_exc()}")
-            page.screenshot(path="daka_error.png")
+            log(f"Error: {traceback.format_exc()}")
+            try: page.screenshot(path="daka_error.png")
+            except: pass
             return False
         finally:
             context.close()
-            log("👋 Done")
+            log("Browser closed")
 
 
 def main():
     import argparse
-    ap = argparse.ArgumentParser()
-    ap.add_argument("-m", "--manual", action="store_true")
-    ap.add_argument("--show", action="store_true")
+    ap = argparse.ArgumentParser(description="SWUN Auto Check-in")
+    ap.add_argument("-m", "--manual", action="store_true", help="Manual mode")
+    ap.add_argument("--show", action="store_true", help="Show browser")
     args = ap.parse_args()
-    ok = do_checkin(headless=(not args.show and not args.manual), manual_mode=args.manual)
+
+    headless = not (args.show or args.manual)
+    ok = do_checkin(headless=headless, manual_mode=args.manual)
     sys.exit(0 if ok else 1)
 
 
