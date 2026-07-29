@@ -1,23 +1,21 @@
 """
-民大自动打卡 v5
+民大自动打卡 v6
 ===============
-核心修复:
-  1. 超长等待 SPA 渲染（WAF JS 需要时间）
-  2. 增强反检测
-  3. 逐秒检查页面状态直到内容出现
+WAF 绕过: playwright-stealth + 真实 iPhone User-Agent + 反检测脚本
 """
 import os, sys, time, traceback
 from datetime import datetime
 from playwright.sync_api import sync_playwright, TimeoutError as PT
+from playwright_stealth import stealth_sync
 
 SCHOOL_LAT = 30.562897
 SCHOOL_LNG = 103.966624
 WXWEB = "https://gyglxt.swun.edu.cn/wxweb/"
 
 IOS_UA = (
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 "
-    "lantuMobilecampus lantuMC"
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_7 like Mac OS X) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+    "Version/16.0 Mobile/15E148 Safari/604.1"
 )
 
 USERNAME = os.environ.get("SWUN_USERNAME") or ""
@@ -30,7 +28,7 @@ def log(msg):
 
 
 def cas_login(page):
-    log("CAS redirect detected, logging in...")
+    log("CAS login...")
     page.wait_for_url("**/authserver.swun.edu.cn/**", timeout=20000)
     page.wait_for_selector("#username", timeout=10000)
     page.fill("#username", USERNAME)
@@ -40,140 +38,138 @@ def cas_login(page):
     log("CAS login OK")
 
 
-def wait_for_spa(page, max_wait=60):
-    """Wait for Vue SPA to render — polls until body has content"""
-    log(f"Waiting for SPA (max {max_wait}s)...")
-    for i in range(max_wait):
+def wait_for_content(page, timeout=60):
+    """Wait for page body to have actual content"""
+    for i in range(timeout):
         try:
             text = page.locator("body").inner_text().strip()
-            if text and len(text) > 50:
-                log(f"SPA ready after {i+1}s: '{text[:100]}...'")
-                return True
-            # Also check for specific elements
-            has_app = page.locator("#app").count() > 0
-            has_vue = page.locator("[class*='van-'], [class*='position-'], .bg-box").count() > 0
-            if has_vue:
-                log(f"Vue components visible after {i+1}s")
-                return True
+            if text and len(text) > 30:
+                log(f"Content after {i}s: {text[:120]}")
+                return text
+            # Or detect Vue/van-ui components
+            if page.locator("#app, .van-nav-bar, .bg-box, .position-clock").count() > 0:
+                text = page.locator("body").inner_text().strip()
+                log(f"App rendered after {i}s: {text[:120]}")
+                return text
         except:
             pass
         time.sleep(1)
-
-    # Last attempt
     try:
-        text = page.locator("body").inner_text().strip()
-        log(f"Final body: '{text[:200]}'")
+        return page.locator("body").inner_text().strip()
     except:
-        log("Could not read body")
-    return False
+        return ""
 
 
 def do_checkin(headless=True, manual_mode=False):
     if not headless:
         manual_mode = True
 
-    log("Launching Chromium...")
+    log("Launching Chromium (stealth mode)...")
 
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(
-            user_data_dir="./browser_data",
+        browser = p.chromium.launch(
             headless=headless,
-            geolocation={"latitude": SCHOOL_LAT, "longitude": SCHOOL_LNG},
-            permissions=["geolocation"],
-            viewport={"width": 375, "height": 812},
-            user_agent=IOS_UA,
-            locale="zh-CN",
             args=[
                 "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
             ],
         )
+
+        context = browser.new_context(
+            geolocation={"latitude": SCHOOL_LAT, "longitude": SCHOOL_LNG},
+            permissions=["geolocation"],
+            viewport={"width": 390, "height": 844},
+            user_agent=IOS_UA,
+            locale="zh-CN",
+            is_mobile=True,
+            has_touch=True,
+        )
+
         page = context.new_page()
 
-        # Anti-detection: hide webdriver flag BEFORE any page load
+        # Apply stealth to hide automation
+        stealth_sync(page)
+
+        # Extra anti-detection
         page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-            Object.defineProperty(navigator, 'languages', {get: () => ['zh-CN', 'zh']});
-            window.chrome = { runtime: {} };
+            delete Object.getPrototypeOf(navigator).webdriver;
+            Object.defineProperty(navigator, 'platform', {get: () => 'iPhone'});
+            Object.defineProperty(navigator, 'maxTouchPoints', {get: () => 5});
+            Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 4});
+            Object.defineProperty(navigator, 'deviceMemory', {get: () => 4});
         """)
 
         try:
-            # Step 1: Visit home page
-            log("Step 1: Loading home page...")
-            page.goto(WXWEB, wait_until="domcontentloaded", timeout=30000)
+            # Step 1: Load home page
+            log("Loading home page...")
+            page.goto(WXWEB, wait_until="networkidle", timeout=60000)
 
-            # Check for CAS redirect immediately
-            page.wait_for_timeout(3000)
+            # CAS
             if "authserver" in page.url:
                 if not USERNAME or not PASSWORD:
-                    log("ERROR: Need SWUN_USERNAME / SWUN_PASSWORD")
+                    log("ERROR: Need credentials")
                     return False
                 cas_login(page)
-                page.goto(WXWEB, wait_until="domcontentloaded", timeout=30000)
+                page.goto(WXWEB, wait_until="networkidle", timeout=60000)
 
-            # Step 2: WAIT for SPA to fully render
-            log("Step 2: Waiting for Vue app to load...")
-            ready = wait_for_spa(page, max_wait=45)
+            # Step 2: Wait for SPA
+            log("Waiting for SPA render...")
+            body = wait_for_content(page, timeout=50)
+            log(f"Home body ({len(body)} chars): {body[:200]}")
+            page.screenshot(path="daka_home.png", full_page=True)
 
-            if not ready:
-                log("SPA did not render in time, taking screenshot...")
-                page.screenshot(path="daka_stuck.png", full_page=True)
-
-            # Step 3: Navigate to clock page via hash
-            log("Step 3: Going to clock page...")
+            # Step 3: Navigate to clock via hash
+            log("Going to clock page...")
             page.evaluate("window.location.hash = '#/PositioningClock'")
-            ready2 = wait_for_spa(page, max_wait=30)
-
+            time.sleep(3)
+            body2 = wait_for_content(page, timeout=30)
+            log(f"Clock body ({len(body2)} chars): {body2[:200]}")
             page.screenshot(path="daka_clock.png", full_page=True)
-            log("Screenshot: daka_clock.png")
 
             if manual_mode:
-                log("Manual mode - operate then press Enter...")
+                log("Manual mode - press Enter when done...")
                 input()
                 page.screenshot(path="daka_result.png")
                 return True
 
-            # Step 4: Try to click
-            body = page.locator("body").inner_text()
-            log(f"Body: {body[:300]}")
-
-            buttons = page.locator("button").all()
-            log(f"Found {len(buttons)} buttons")
-            for btn in buttons[:10]:
+            # Step 4: Find & click button
+            btns = page.locator("button").all()
+            log(f"Buttons found: {len(btns)}")
+            for i, b in enumerate(btns[:10]):
                 try:
-                    log(f"  btn: '{btn.inner_text()}'")
+                    log(f"  [{i}] '{b.inner_text()}'")
                 except:
                     pass
 
             for label in ["打卡", "签到", "提交"]:
                 btn = page.locator(f"button:has-text('{label}')")
                 if btn.count() > 0:
-                    log(f"Clicking '{label}' button!")
+                    log(f"Clicking '{label}'!")
                     btn.first.click()
-                    page.wait_for_timeout(5000)
-                    result = page.locator("body").inner_text()
-                    if "成功" in result:
-                        log("SUCCESS!")
-                    else:
-                        log(f"Result: {result[:200]}")
+                    time.sleep(5)
+                    r = page.locator("body").inner_text()
+                    log(f"Result: {r[:250]}")
                     page.screenshot(path="daka_done.png")
                     return True
 
-            log("No clickable button found (time window issue or already done)")
+            if "已打卡" in body2:
+                log("Already checked in today")
+            else:
+                log("No button (outside time window?)")
             return True
 
         except PT as e:
             log(f"Timeout: {e}")
-            try: page.screenshot(path="daka_error.png")
-            except: pass
+            page.screenshot(path="daka_error.png")
             return False
         except Exception as e:
             log(f"Error: {traceback.format_exc()}")
-            try: page.screenshot(path="daka_error.png")
-            except: pass
+            page.screenshot(path="daka_error.png")
             return False
         finally:
             context.close()
+            browser.close()
             log("Done")
 
 
