@@ -36,3 +36,4 @@ jobs:
           path: |
             daka*.png
             cas_login.png
+            *.txt

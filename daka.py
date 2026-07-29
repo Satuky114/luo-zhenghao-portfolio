@@ -150,6 +150,10 @@ def do_checkin(headless=True, manual_mode=False):
             page.wait_for_timeout(5000)
             log(f"URL: {page.url[:100]}")
 
+            # Dump page title and key text to verify WAF bypass
+            title = page.title()
+            log(f"Page title: {title}")
+
             # Step 2: Handle CAS / login
             if "authserver" in page.url:
                 log("CAS redirect detected")
@@ -228,11 +232,21 @@ def do_checkin(headless=True, manual_mode=False):
                     break
             page.wait_for_timeout(2000)
 
+            # Also save page_text.txt as artifact for UTF-8 debug
             body = page.locator("body").inner_text().strip()
-            # Write body to file to preserve UTF-8
             with open("page_text.txt", "w", encoding="utf-8") as f:
                 f.write(body)
-            log(f"Clock body ({len(body)} chars): {body[:300]}")
+            # Also save toast text
+            toast_now = page.evaluate("""
+                (function() {
+                    var t = document.querySelector('.van-toast__text');
+                    return t ? t.textContent : 'no toast element';
+                })()
+            """)
+            with open("toast_text.txt", "w", encoding="utf-8") as f:
+                f.write(toast_now)
+            log(f"Clock body ({len(body)} chars)")
+            log(f"Toast text: {toast_now}")
             page.screenshot(path="daka_clock.png", full_page=True)
 
             if manual_mode:
