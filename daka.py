@@ -6,7 +6,7 @@ WAF 绕过: playwright-stealth + 真实 iPhone User-Agent + 反检测脚本
 import os, sys, time, traceback
 from datetime import datetime
 from playwright.sync_api import sync_playwright, TimeoutError as PT
-from playwright_stealth import stealth_sync
+from playwright_stealth import Stealth
 
 SCHOOL_LAT = 30.562897
 SCHOOL_LNG = 103.966624
@@ -88,14 +88,18 @@ def do_checkin(headless=True, manual_mode=False):
 
         page = context.new_page()
 
-        # Apply stealth to hide automation
-        stealth_sync(page)
+        # Apply stealth to hide automation (v2 API)
+        stealth = Stealth(
+            navigator_platform_override="iPhone",
+            navigator_user_agent_override=IOS_UA,
+            navigator_languages_override=("zh-CN", "zh"),
+            navigator_vendor_override="Apple Computer, Inc.",
+        )
+        stealth.apply_stealth_sync(page)
 
-        # Extra anti-detection
+        # Stealth handles WebDriver/platform/webgl spoofing
+        # Extra: additional mobile-specific properties
         page.add_init_script("""
-            delete Object.getPrototypeOf(navigator).webdriver;
-            Object.defineProperty(navigator, 'platform', {get: () => 'iPhone'});
-            Object.defineProperty(navigator, 'maxTouchPoints', {get: () => 5});
             Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 4});
             Object.defineProperty(navigator, 'deviceMemory', {get: () => 4});
         """)
