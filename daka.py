@@ -163,9 +163,12 @@ def do_checkin(headless=True, manual_mode=False):
                 ok = cas_login_full(page)
                 if not ok:
                     log("CAS login may have failed, but continuing...")
-                # Go back to wxweb
-                page.goto(WXWEB, wait_until="networkidle", timeout=30000)
-                page.wait_for_timeout(5000)
+                # After CAS, the redirect should go back to wxweb automatically
+                try:
+                    page.wait_for_url("**/wxweb/**", timeout=20000)
+                    log("Redirected back to wxweb after CAS")
+                except PT:
+                    log(f"Post-CAS URL: {page.url[:100]}")
 
             # Step 3: Handle SPA login page
             if "#/login" in page.url or "/login" in page.url:
@@ -174,8 +177,17 @@ def do_checkin(headless=True, manual_mode=False):
                 auth_elem = page.locator("text=统一身份认证登录").first
                 if auth_elem.count() > 0:
                     auth_elem.click()
-                    page.wait_for_timeout(5000)
+                    # Wait for redirect: SPA -> appcas -> CAS authserver
+                    page.wait_for_timeout(3000)
                     log(f"After click URL: {page.url[:100]}")
+
+                    # The click might go to appcas/ssoMobileLogin.jsp first, which then
+                    # redirects to authserver. Wait for CAS login page.
+                    try:
+                        page.wait_for_url("**/authserver.swun.edu.cn/**", timeout=15000)
+                        log("Redirected to CAS authserver")
+                    except PT:
+                        log(f"Not redirected to CAS, current URL: {page.url[:100]}")
 
                     # Now we should be on CAS
                     if "authserver" in page.url:
