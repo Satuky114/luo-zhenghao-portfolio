@@ -196,14 +196,26 @@ def do_checkin(headless=True, manual_mode=False):
             # If CAS returned us to #/hoyOauth, wait for SPA to process token
             if "hoyOauth" in page.url or "oauth" in page.url.lower():
                 log("Detected OAuth callback, waiting for token processing...")
-                page.wait_for_timeout(5000)
+                page.wait_for_timeout(8000)
                 log(f"Post-OAuth URL: {page.url[:100]}")
 
             page.evaluate("window.location.hash = '#/PositioningClock'")
-            page.wait_for_timeout(5000)
+            # Wait for Vue SPA to render clock page and finish API calls
+            page.wait_for_timeout(3000)
             log(f"Clock page URL: {page.url[:100]}")
 
+            # Wait for loading toast to disappear (queryPersonDetail API call)
+            try:
+                page.wait_for_selector(".van-toast", state="hidden", timeout=15000)
+                log("Loading toast gone")
+            except PT:
+                log("Loading toast still visible or not found")
+            page.wait_for_timeout(3000)
+
             body = page.locator("body").inner_text().strip()
+            # Write body to file to preserve UTF-8
+            with open("page_text.txt", "w", encoding="utf-8") as f:
+                f.write(body)
             log(f"Clock body ({len(body)} chars): {body[:300]}")
             page.screenshot(path="daka_clock.png", full_page=True)
 
@@ -214,48 +226,83 @@ def do_checkin(headless=True, manual_mode=False):
                 return True
 
             # Step 5: Find and click check-in button
-            # The page uses Vant UI (van-* classes). Dump clock container HTML.
+            # Dump full clock HTML to find the check-in component
             clock_html = page.evaluate("""
                 (function() {
-                    var el = document.querySelector('.position-clock') || document.querySelector('.content-box');
-                    return el ? el.innerHTML.substring(0, 3000) : 'NO_CLOCK';
+                    var el = document.querySelector('.position-clock');
+                    return el ? el.outerHTML.substring(0, 5000) : 'NO_POSITION_CLOCK';
                 })()
             """)
-            log(f"Clock HTML: {clock_html[:500]}")
-            log(f"---HTML clipped---")
+            log(f"Clock HTML: {clock_html[:800]}")
+            log(f"--- total {len(clock_html)} chars ---")
 
-            # Dump ALL text nodes in the clock area
+            # Check vConsole for any error logs
+            vc_logs = page.evaluate("""
+                (function() {
+                    try {
+                        var logs = [];
+                        if (window.VConsole && window.VConsole.instance) {
+                            var plugin = window.VConsole.instance.pluginList;
+                            return JSON.stringify(plugin);
+                        }
+                        return 'NO_VCONSOLE';
+                    } catch(e) { return e.toString(); }
+                })()
+            """)
+            log(f"VConsole: {vc_logs[:200]}")
+
+            # Check if there's a toast/dialog showing
+            toast_text = page.evaluate("""
+                (function() {
+                    var t = document.querySelector('.van-toast__text');
+                    return t ? t.textContent : 'no toast';
+                })()
+            """)
+            log(f"Toast: {toast_text}")
+
+            # Dump all leaf text nodes with their parent class
             all_text = page.evaluate("""
-                Array.from(document.querySelectorAll('*'))
+                Array.from(document.querySelectorAll('.position-clock *'))
                     .filter(el => el.children.length === 0 && el.textContent.trim().length > 0)
-                    .map(el => el.tagName + ':' + el.className + '="' + el.textContent.trim().substring(0,30) + '"')
-                    .filter(s => !s.includes('van-tabbar'))
-                    .slice(0, 60)
+                    .map(el => el.tagName + '.' + el.className.split(' ')[0] + '="' + el.textContent.trim().substring(0, 50) + '"')
+                    .slice(0, 30)
             """)
             for t in all_text:
-                log(f"  {t}")
+                log(f"  NODE: {t}")
 
-            # Check time on the page
-            time_info = page.evaluate("""
+            # Check the clock in button specifically - might be .position-circle or similar
+            clock_areas = page.evaluate("""
                 (function() {
-                    var t = document.querySelector('.position-time');
-                    return t ? t.textContent.trim() : 'NO_TIME';
+                    var areas = {};
+                    var els = document.querySelectorAll('.position-clock [class*=circle], .position-clock [class*=title], .position-clock [class*=head], .position-clock [class*=body], .position-clock [class*=punch], .position-clock [class*=sign], .position-clock [class*=check], .position-clock [class*=daka], .position-clock [class*=btn], .position-clock [class*=submit], .position-clock [class*=clock]');
+                    els.forEach(function(el) {
+                        var key = el.className.baseVal || el.className;
+                        areas[key] = (areas[key] || 0) + 1;
+                    });
+                    return areas;
                 })()
             """)
-            log(f"Page time: {time_info}")
+            log(f"Clickable zones: {clock_areas}")
 
-            # Try clicking the central circle animation (the clock-in button)
-            circle = page.locator(".circle-anim-first, .circle-title, .title-body, .circle-anim-first *")
+            # Try clicking the circle animation
+            circle = page.locator(".circle-anim-first, .position-circle, .circle-title, .title-head, .title-body")
             if circle.count() > 0:
-                log(f"Clicking circle animation element...")
+                log(f"Clicking central circle (count={circle.count()})...")
                 circle.first.click()
                 page.wait_for_timeout(5000)
                 result = page.locator("body").inner_text()
+                toast2 = page.evaluate("""
+                    (function() {
+                        var t = document.querySelector('.van-toast__text');
+                        return t ? t.textContent : 'no toast';
+                    })()
+                """)
+                log(f"After click toast: {toast2}")
                 log(f"Result: {result[:300]}")
                 page.screenshot(path="daka_done.png")
                 return True
 
-            if "已打卡" in body:
+            if body and "已打卡" in body:
                 log("Already checked in today")
             else:
                 log("No clickable check-in element found (outside clock window?)")
