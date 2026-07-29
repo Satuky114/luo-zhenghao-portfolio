@@ -108,21 +108,40 @@ def do_checkin(headless=True, manual_mode=False):
         page.add_init_script("""
             Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
         """)
-        # Override Date to simulate check-in window (21:35 BJT = 13:35 UTC)
+        # Override Date BEFORE any page JS runs
         page.add_init_script("""
-            const TARGET = new Date('2026-07-29T13:35:00Z').getTime();
-            const RealDate = Date;
-            window._originalNow = RealDate.now.bind(RealDate);
-            Date = function(...args) {
-                if (args.length === 0) return new RealDate(TARGET);
-                return new RealDate(...args);
-            };
-            Date.now = () => TARGET;
-            Date.parse = RealDate.parse.bind(RealDate);
-            Date.UTC = RealDate.UTC.bind(RealDate);
-            Date.prototype = RealDate.prototype;
+            (function() {
+                const TARGET_MS = new Date('2026-07-29T13:35:00Z').getTime();
+                const OrigDate = Date;
+                const OrigNow = Date.now;
+                const OrigParse = Date.parse;
+                const OrigUTC = Date.UTC;
+
+                function FakeDate() {
+                    if (arguments.length === 0) return new OrigDate(TARGET_MS);
+                    // Need to use .apply with the arguments object in a way that works
+                    switch(arguments.length) {
+                        case 1: return new OrigDate(arguments[0]);
+                        case 2: return new OrigDate(arguments[0], arguments[1]);
+                        case 3: return new OrigDate(arguments[0], arguments[1], arguments[2]);
+                        case 4: return new OrigDate(arguments[0], arguments[1], arguments[2], arguments[3]);
+                        case 5: return new OrigDate(arguments[0], arguments[1], arguments[2], arguments[3], arguments[4]);
+                        case 6: return new OrigDate(arguments[0], arguments[1], arguments[2], arguments[3], arguments[4], arguments[5]);
+                        case 7: return new OrigDate(arguments[0], arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6]);
+                        default: return new OrigDate(arguments[0], arguments[1], arguments[2], arguments[3], arguments[4], arguments[5], arguments[6]);
+                    }
+                }
+                FakeDate.prototype = OrigDate.prototype;
+                FakeDate.now = function() { return TARGET_MS; };
+                FakeDate.parse = OrigParse;
+                FakeDate.UTC = OrigUTC;
+                FakeDate.__proto__ = OrigDate;
+
+                window.Date = FakeDate;
+                window.__origDate = OrigDate;
+            })();
         """)
-        log("Date override: 21:35 BJT")
+        log("Date overridden to 21:35 BJT")
 
         try:
             # Step 1: Load wxweb home
@@ -195,47 +214,46 @@ def do_checkin(headless=True, manual_mode=False):
                 return True
 
             # Step 5: Find and click check-in button
-            # Dump all interactive elements for debugging
-            for sel in ["button", "[role=button]", "a.van-button", "div.van-button",
-                        ".van-button", "[class*=btn]", "[class*=Btn]",
-                        "div[class*=clock]", "div[class*=check]", "div[class*=sign]",
-                        "div[class*=punch]"]:
-                elems = page.locator(sel).all()
-                if elems:
-                    log(f"Selector '{sel}': {len(elems)} elements")
-
-            # Full page HTML dump (headless debugging)
-            html = page.content()
-            log(f"Page HTML length: {len(html)}")
-            # Extract all class names to understand the component library
-            classes = page.evaluate("""
-                Array.from(document.querySelectorAll('*'))
-                    .map(el => el.className)
-                    .filter(c => typeof c === 'string' && c.length > 0 && c.length < 80)
-                    .slice(0, 50)
+            # The page uses Vant UI (van-* classes). Dump clock container HTML.
+            clock_html = page.evaluate("""
+                (function() {
+                    var el = document.querySelector('.position-clock') || document.querySelector('.content-box');
+                    return el ? el.innerHTML.substring(0, 3000) : 'NO_CLOCK';
+                })()
             """)
-            log(f"Classes: {classes}")
+            log(f"Clock HTML: {clock_html[:500]}")
+            log(f"---HTML clipped---")
 
-            btns = page.locator("button").all()
-            log(f"Buttons found: {len(btns)}")
-            for i, b in enumerate(btns[:10]):
-                try:
-                    log(f"  [{i}] '{b.inner_text()[:40]}'")
-                except:
-                    pass
+            # Dump ALL text nodes in the clock area
+            all_text = page.evaluate("""
+                Array.from(document.querySelectorAll('*'))
+                    .filter(el => el.children.length === 0 && el.textContent.trim().length > 0)
+                    .map(el => el.tagName + ':' + el.className + '="' + el.textContent.trim().substring(0,30) + '"')
+                    .filter(s => !s.includes('van-tabbar'))
+                    .slice(0, 60)
+            """)
+            for t in all_text:
+                log(f"  {t}")
 
-            # Also check for any div/span with click-like text
-            for label in ["打卡", "签到", "提交", "确认"]:
-                for tag in ["button", "div", "span", "a"]:
-                    elem = page.locator(f"{tag}:has-text('{label}')")
-                    if elem.count() > 0:
-                        log(f"Found '{label}' in <{tag}> x{elem.count()}")
-                        elem.first.click()
-                        page.wait_for_timeout(5000)
-                        result = page.locator("body").inner_text()
-                        log(f"Result after clicking '{label}': {result[:250]}")
-                        page.screenshot(path="daka_done.png")
-                        return True
+            # Check time on the page
+            time_info = page.evaluate("""
+                (function() {
+                    var t = document.querySelector('.position-time');
+                    return t ? t.textContent.trim() : 'NO_TIME';
+                })()
+            """)
+            log(f"Page time: {time_info}")
+
+            # Try clicking the central circle animation (the clock-in button)
+            circle = page.locator(".circle-anim-first, .circle-title, .title-body, .circle-anim-first *")
+            if circle.count() > 0:
+                log(f"Clicking circle animation element...")
+                circle.first.click()
+                page.wait_for_timeout(5000)
+                result = page.locator("body").inner_text()
+                log(f"Result: {result[:300]}")
+                page.screenshot(path="daka_done.png")
+                return True
 
             if "已打卡" in body:
                 log("Already checked in today")
