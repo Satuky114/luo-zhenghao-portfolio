@@ -230,13 +230,22 @@ def do_checkin(headless=True, manual_mode=False):
             log("Waiting for API calls...")
             page.wait_for_timeout(15000)
 
+            # Page state
+            body = page.locator("body").inner_text().strip()
+            with open("page_text.txt", "w", encoding="utf-8") as f:
+                f.write(body)
+            log(f"Page body ({len(body)} chars)")
+
             if manual_mode:
                 log("Manual mode - press Enter when done...")
-                input()
+                try:
+                    input()
+                except EOFError:
+                    log("(EOF on input, continuing automatically)")
                 page.screenshot(path="daka_result.png")
                 return True
 
-            # Step 5: Click check-in
+            # Step 5: Find and click check-in button
             ok = find_and_click_clock(page)
             return ok
 
