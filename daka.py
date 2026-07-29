@@ -173,6 +173,27 @@ def do_checkin(headless=True, manual_mode=False):
                 return True
 
             # Step 5: Find and click check-in button
+            # Dump all interactive elements for debugging
+            for sel in ["button", "[role=button]", "a.van-button", "div.van-button",
+                        ".van-button", "[class*=btn]", "[class*=Btn]",
+                        "div[class*=clock]", "div[class*=check]", "div[class*=sign]",
+                        "div[class*=punch]"]:
+                elems = page.locator(sel).all()
+                if elems:
+                    log(f"Selector '{sel}': {len(elems)} elements")
+
+            # Full page HTML dump (headless debugging)
+            html = page.content()
+            log(f"Page HTML length: {len(html)}")
+            # Extract all class names to understand the component library
+            classes = page.evaluate("""
+                Array.from(document.querySelectorAll('*'))
+                    .map(el => el.className)
+                    .filter(c => typeof c === 'string' && c.length > 0 && c.length < 80)
+                    .slice(0, 50)
+            """)
+            log(f"Classes: {classes}")
+
             btns = page.locator("button").all()
             log(f"Buttons found: {len(btns)}")
             for i, b in enumerate(btns[:10]):
@@ -181,21 +202,23 @@ def do_checkin(headless=True, manual_mode=False):
                 except:
                     pass
 
-            for label in ["打卡", "签到", "提交"]:
-                btn = page.locator(f"button:has-text('{label}')")
-                if btn.count() > 0:
-                    log(f"Clicking '{label}'!")
-                    btn.first.click()
-                    time.sleep(5)
-                    result = page.locator("body").inner_text()
-                    log(f"Result: {result[:250]}")
-                    page.screenshot(path="daka_done.png")
-                    return True
+            # Also check for any div/span with click-like text
+            for label in ["打卡", "签到", "提交", "确认"]:
+                for tag in ["button", "div", "span", "a"]:
+                    elem = page.locator(f"{tag}:has-text('{label}')")
+                    if elem.count() > 0:
+                        log(f"Found '{label}' in <{tag}> x{elem.count()}")
+                        elem.first.click()
+                        page.wait_for_timeout(5000)
+                        result = page.locator("body").inner_text()
+                        log(f"Result after clicking '{label}': {result[:250]}")
+                        page.screenshot(path="daka_done.png")
+                        return True
 
             if "已打卡" in body:
                 log("Already checked in today")
             else:
-                log("No button found (outside clock window?)")
+                log("No clickable check-in element found (outside clock window?)")
             return True
 
         except PT as e:
