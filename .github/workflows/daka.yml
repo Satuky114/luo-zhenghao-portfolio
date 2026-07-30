@@ -2,8 +2,8 @@ name: 民大每日打卡
 
 on:
   schedule:
-    # UTC 13:35 = 北京时间 21:35（打卡开始后5分钟）
-    - cron: '35 13 * * *'
+    # UTC 11:30 = 北京时间 19:30（提前2小时，应对 cron 延迟）
+    - cron: '30 11 * * *'
   workflow_dispatch:
     inputs:
       force:
@@ -15,7 +15,7 @@ on:
 jobs:
   daka:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 300
 
     steps:
       - uses: actions/checkout@v4

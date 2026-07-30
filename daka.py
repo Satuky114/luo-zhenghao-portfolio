@@ -1,16 +1,16 @@
 """
-民大自动打卡 v13 - 生产就绪版
+民大自动打卡 v14 - 多重时间校验版
 =============================
 v12 关键发现:
 - queryPersonDetailInfoByPersonsn API 返回 code=500 在非打卡时段
 - 原因: 服务器在非打卡时段 (21:30-23:25 BJT) 拒绝请求
-- 这意味着: 打卡只能在正确的时间窗口执行，无法提前测试
 
-v13 设计:
-- --force: 跳过时间窗口检查（用于测试，接受 API 可能 500）
-- --manual / --show: 非 headless 模式
-- 默认: 在时间窗口内自动打卡
-- 移除手动模式 wait-for-input (CI 中 stdin 是 EOF)
+v14 变更:
+- 非窗口时间改轮询等待（应对 GitHub Actions cron 延迟）
+- 多重时间校验：登陆后、点击打卡前再次检查窗口
+- 任一校验点滑出窗口 → 放弃本轮，避免服务器拒绝
+- cron 提前到 19:30 BJT (30 11 * * *)
+- --force 跳过所有时间检查（用于 workflow_dispatch 测试）
 """
 import os, sys, time, json, traceback
 from datetime import datetime, timezone, timedelta
@@ -31,6 +31,22 @@ DESKTOP_UA = (
 
 USERNAME = os.environ.get("SWUN_USERNAME") or ""
 PASSWORD = os.environ.get("SWUN_PASSWORD") or ""
+
+
+def in_checkin_window():
+    """Check-in window: 21:30 - 23:25 BJT (server-side enforced)."""
+    now = datetime.now(BJT)
+    return (
+        (now.hour == 21 and now.minute >= 30) or
+        now.hour == 22 or
+        (now.hour == 23 and now.minute <= 25)
+    )
+
+
+def window_status():
+    """Human-readable window status for logging."""
+    now = datetime.now(BJT)
+    return f"{now.strftime('%H:%M')} BJT — {'IN window' if in_checkin_window() else 'OUTSIDE window'}"
 
 
 def log(msg):
@@ -111,6 +127,12 @@ def find_and_click_clock(page):
     else:
         log("Loading timeout (30s)")
 
+    # ⌛ 最后防线：点击前确认仍在窗口内
+    if not in_checkin_window():
+        log(f"Window closed before click! {window_status()}")
+        log("Aborting to avoid server rejection.")
+        return True
+
     # Click the circle
     circle = page.locator(".position-circle")
     if circle.count() == 0:
@@ -151,26 +173,32 @@ def find_and_click_clock(page):
 
 
 def do_checkin(headless=True, force=False):
-    """Main entry. force=True skips time-window check."""
+    """Main entry. force=True skips all time-window checks."""
 
     now = datetime.now(BJT)
-    in_window = (
-        (now.hour == 21 and now.minute >= 30) or
-        now.hour == 22 or
-        (now.hour == 23 and now.minute <= 25)
-    )
 
-    if not in_window and not force:
-        log(f"NOT in check-in window (21:30-23:25 BJT). Current: {now.strftime('%H:%M')} BJT")
-        log("Skipping. Use --force to test outside window.")
-        return True
+    if not in_checkin_window() and not force:
+        log(f"{window_status()} — will poll every 2min (max 3h)...")
+        deadline = now + timedelta(hours=3)
+        while True:
+            time.sleep(120)
+            now = datetime.now(BJT)
+            if in_checkin_window():
+                log(f"Window open! {window_status()}")
+                break
+            if now > deadline:
+                log("Poll timeout (3h elapsed), giving up")
+                return True
+            if now.hour >= 23 and now.minute > 25:
+                log("Window already closed for today, giving up")
+                return True
+            log(f"Still waiting... ({now.strftime('%H:%M')} BJT)")
 
-    if force and not in_window:
-        log(f"WARNING: Outside check-in window ({now.strftime('%H:%M')} BJT).")
-        log("API calls may fail with code 500 (queryPersonDetailInfo).")
+    if force and not in_checkin_window():
+        log(f"WARNING: {window_status()} — API calls may fail (code 500).")
 
     log("=" * 60)
-    log(f"v13 - Starting check-in at {now.strftime('%Y-%m-%d %H:%M:%S')} BJT")
+    log(f"v14 - Starting check-in at {now.strftime('%Y-%m-%d %H:%M:%S')} BJT")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -230,6 +258,12 @@ def do_checkin(headless=True, force=False):
                 log("OAuth token processing (15s)...")
                 page.wait_for_timeout(15000)
 
+            # ⌛ Login+OAuth cost time — re-verify window before proceeding
+            if not force and not in_checkin_window():
+                log(f"Window closed after login! {window_status()}")
+                log("Aborting to avoid server rejection.")
+                return True
+
             # Step 4: Navigate to clock page
             log("=> PositioningClock...")
             try:
@@ -258,7 +292,7 @@ def do_checkin(headless=True, force=False):
 
 def main():
     import argparse
-    ap = argparse.ArgumentParser(description="民大自动打卡 v13")
+    ap = argparse.ArgumentParser(description="民大自动打卡 v14")
     ap.add_argument("-m", "--manual", action="store_true", help="Non-headless, interactive")
     ap.add_argument("--show", action="store_true", help="Show browser window")
     ap.add_argument("--force", action="store_true", help="Skip time window check")
