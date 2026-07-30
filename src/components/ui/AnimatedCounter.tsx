@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useInView, useSpring, useMotionValue, useTransform } from "framer-motion";
+import { motion, useInView, useSpring, useTransform } from "framer-motion";
 import { useRef, useEffect } from "react";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 
@@ -12,10 +12,6 @@ interface AnimatedCounterProps {
   className?: string;
 }
 
-/**
- * Animates a number from 0 to `value` when scrolled into view.
- * Uses framer-motion spring for smooth easing.
- */
 export function AnimatedCounter({
   value,
   suffix = "",
@@ -24,11 +20,11 @@ export function AnimatedCounter({
   className = "",
 }: AnimatedCounterProps) {
   const ref = useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true, margin: "-60px" });
+  const inView = useInView(ref, { once: true });
   const reduced = useReducedMotion();
 
-  const springVal = useMotionValue(0);
-  const spring = useSpring(springVal, {
+  // Use a simple state flip to avoid timing issues with useInView threshold
+  const spring = useSpring(reduced ? value : 0, {
     stiffness: 80,
     damping: 30,
     duration: reduced ? 0 : duration * 1000,
@@ -36,8 +32,10 @@ export function AnimatedCounter({
   const rounded = useTransform(spring, (v) => Math.round(v));
 
   useEffect(() => {
-    if (inView) springVal.set(value);
-  }, [inView, value, springVal]);
+    if (inView) {
+      spring.set(value);
+    }
+  }, [inView, value, spring]);
 
   return (
     <motion.span

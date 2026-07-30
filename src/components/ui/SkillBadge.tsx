@@ -13,18 +13,18 @@ interface SkillBadgeProps {
 }
 
 const categoryColors: Record<BadgeCategory, string> = {
-  ai: "border-purple-500/30 hover:border-purple-500 hover:shadow-[0_0_20px_rgba(147,51,234,0.2)]",
-  dev: "border-blue-500/30 hover:border-blue-500 hover:shadow-[0_0_20px_rgba(59,130,246,0.2)]",
+  ai: "border-amber-400/25 hover:border-amber-400 hover:shadow-[0_0_20px_rgba(212,145,92,0.15)]",
+  dev: "border-cyan-400/25 hover:border-cyan-400 hover:shadow-[0_0_20px_rgba(90,143,143,0.15)]",
   content:
-    "border-amber-500/30 hover:border-amber-500 hover:shadow-[0_0_20px_rgba(245,158,11,0.2)]",
-  core: "border-emerald-500/30 hover:border-emerald-500 hover:shadow-[0_0_20px_rgba(52,211,153,0.2)]",
+    "border-orange-400/25 hover:border-orange-400 hover:shadow-[0_0_20px_rgba(196,84,62,0.15)]",
+  core: "border-amber-300/25 hover:border-amber-300 hover:shadow-[0_0_20px_rgba(212,145,92,0.12)]",
 };
 
 const categoryBgHover: Record<BadgeCategory, string> = {
-  ai: "hover:bg-purple-500/10",
-  dev: "hover:bg-blue-500/10",
-  content: "hover:bg-amber-500/10",
-  core: "hover:bg-emerald-500/10",
+  ai: "hover:bg-amber-500/8",
+  dev: "hover:bg-cyan-500/8",
+  content: "hover:bg-orange-500/8",
+  core: "hover:bg-amber-400/8",
 };
 
 /**

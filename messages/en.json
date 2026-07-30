@@ -33,6 +33,27 @@
       "title": "Personal Brand Website",
       "description": "Independently completed the full development lifecycle — from requirements analysis and prototype design to frontend development and deployment — using AI tools like ChatGPT and Claude. Applied Prompt Engineering methodology to systematically decompose tasks, establishing a collaborative workflow: 'Task Breakdown → AI Generation → Human Verification → Rapid Iteration'.",
       "tags": ["React", "Next.js", "Prompt Engineering", "Full-stack Delivery"]
+    },
+    "daozhonghua": {
+      "title": "Dao Zhonghua · Bashu Culture Videos",
+      "description": "Bilingual short-form video series focused on Bashu and ethnic culture. Served as bilingual anchor and content creator, using ChatGPT for topic planning and script optimization. Works featured on People's Daily, China News Network, and Cover News.",
+      "tags": ["Bilingual Anchor", "Video Creation", "AI Scripting", "Cover News"],
+      "link": "Watch on Cover News"
+    },
+    "volleyball": {
+      "title": "Volleyball · Gongga Cup League",
+      "description": "Represented Southwest Minzu University at the 6th Sichuan Gongga Cup Youth Campus Sports Super League. Contributed as a key team member, demonstrating athletic spirit and teamwork on the court.",
+      "tags": ["Gongga Cup", "Volleyball Athlete", "Teamwork", "Campus Sports"]
+    },
+    "photography": {
+      "title": "Photography · 2nd Prize Winner",
+      "description": "Capturing light, shadow, and fleeting moments through the lens. Awarded 2nd prize at the Southwest Minzu University Campus Photography Competition for work demonstrating a distinctive aesthetic perspective in composition and color.",
+      "tags": ["Photography", "Composition", "Campus Award", "Visual Art"]
+    },
+    "daka": {
+      "title": "SWUN Auto Check-in System",
+      "description": "A fully automated daily check-in system for Southwest Minzu University, built from reverse engineering to automated deployment. Using Playwright browser automation with GitHub Actions cron scheduling, it bypasses the campus WAF firewall, handles CAS OAuth2.0 authentication, AES-CBC password encryption, and GPS location spoofing — achieving completely unattended daily check-in. Through 14 version iterations, key challenges solved include WAF detection bypass, CAS OAuth2.0 protocol adaptation, Vue.js SPA navigation parsing, and server-side time-window validation.",
+      "tags": ["Playwright", "CAS OAuth2.0", "WAF Bypass", "AES-CBC", "GitHub Actions"]
     }
   },
   "content": {
@@ -81,7 +102,8 @@
     "email": "Email",
     "phone": "Phone",
     "github": "GitHub",
-    "wechat": "WeChat"
+    "wechat": "WeChat",
+    "downloadResume": "Download Resume PDF"
   },
   "footer": {
     "builtWith": "AI-powered collaboration driven by Claude",

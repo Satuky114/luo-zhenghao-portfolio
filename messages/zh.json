@@ -33,6 +33,27 @@
       "title": "个人品牌官网",
       "description": "基于ChatGPT、Claude等AI工具，独立完成从需求分析、原型设计、前端开发到部署上线的全流程实践。运用Prompt Engineering方法系统拆解开发任务，建立'需求拆解→AI生成→人工校验→快速迭代'的协同开发工作流。",
       "tags": ["React", "Next.js", "Prompt Engineering", "全流程交付"]
+    },
+    "daozhonghua": {
+      "title": "道中华 · 巴蜀文化视频",
+      "description": "聚焦巴蜀文化与民族文化的双语短视频系列，担任双语主播及内容创作者。使用ChatGPT辅助选题策划与脚本优化，作品获人民网、中国新闻网、封面新闻等主流媒体转载。",
+      "tags": ["双语主播", "视频创作", "AI脚本优化", "封面新闻转载"],
+      "link": "封面新闻观看"
+    },
+    "volleyball": {
+      "title": "排球 · 贡嘎杯超级联赛",
+      "description": "代表西南民族大学参加四川省第六届贡嘎杯青少年校园体育超级联赛，作为球队重要成员在赛场上拼搏，展现运动精神与团队协作能力。",
+      "tags": ["贡嘎杯", "排球运动员", "团队协作", "校园体育"]
+    },
+    "photography": {
+      "title": "摄影 · 校摄影大赛二等奖",
+      "description": "用镜头捕捉光影与瞬间的记忆。摄影作品获西南民族大学校园摄影大赛二等奖，在构图与色彩表达中展现独特的审美视角。",
+      "tags": ["摄影", "构图", "校园大赛", "视觉表达"]
+    },
+    "daka": {
+      "title": "民大自动打卡系统",
+      "description": "针对西南民族大学校园打卡系统，独立完成从逆向分析到自动化部署的全链路工程实践。通过Playwright浏览器自动化 + GitHub Actions定时调度，绕过校园WAF防火墙，实现CAS统一身份认证登录、AES-CBC密码加密、GPS模拟定位，最终实现完全无人值守的每日自动打卡。历经14个版本迭代，攻克WAF检测绕过、CAS OAuth2.0协议适配、Vue.js SPA导航解析、服务端时间窗口校验等关键技术难题。",
+      "tags": ["Playwright", "CAS OAuth2.0", "WAF Bypass", "AES-CBC", "GitHub Actions"]
     }
   },
   "content": {
@@ -81,7 +102,8 @@
     "email": "邮箱",
     "phone": "电话",
     "github": "GitHub",
-    "wechat": "微信"
+    "wechat": "微信",
+    "downloadResume": "下载简历 PDF"
   },
   "footer": {
     "builtWith": "由 Claude 驱动的 AI 协同创作",

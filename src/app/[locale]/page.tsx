@@ -9,7 +9,6 @@ import { Experience } from "@/components/Experience";
 import { Contact } from "@/components/Contact";
 import { Footer } from "@/components/Footer";
 import { Nav } from "@/components/Nav";
-import { GlowOrb } from "@/components/ui/GlowOrb";
 
 export default function HomePage() {
   return (
@@ -20,17 +19,18 @@ export default function HomePage() {
       <Nav />
       <Hero />
       <About />
-      <Projects />
+      <div className="section-alt">
+        <Projects />
+      </div>
       <ContentCreation />
-      <Skills />
+      <div className="section-alt">
+        <Skills />
+      </div>
       <Experience />
       <Contact />
 
-      {/* Footer with closing orb */}
-      <div className="relative overflow-hidden">
-        <GlowOrb size={500} color="var(--accent)" className="bottom-0 left-1/2 -translate-x-1/2 translate-y-1/3" />
-        <Footer />
-      </div>
+      {/* Footer */}
+      <Footer />
     </main>
   );
 }

@@ -68,7 +68,8 @@ export function ClientIntlProvider({
 
   useEffect(() => {
     loadMessages().then(() => setReady(true));
-  }, []);
+    document.documentElement.lang = initialLocale;
+  }, [initialLocale]);
 
   const t = (key: string) => {
     const dict = locale === "en" ? cachedEN : cachedZH;

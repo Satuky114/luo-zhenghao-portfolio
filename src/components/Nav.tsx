@@ -115,10 +115,14 @@ export function Nav() {
             {/* Language toggle */}
             <button
               onClick={toggleLocale}
-              className="ml-3 flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-text-secondary hover:text-text-primary border border-border hover:border-border-hover rounded-lg transition-all"
+              className="ml-3 relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-text-secondary hover:text-text-primary border border-border hover:border-border-hover rounded-lg transition-all"
             >
               <Globe size={14} />
               <span className="font-mono text-xs">{locale.toUpperCase()}</span>
+              <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-accent" />
+              </span>
             </button>
           </div>
 

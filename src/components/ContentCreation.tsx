@@ -36,6 +36,7 @@ const MEDIA_OUTLETS = [
   { zh: "人民网", en: "People's Daily" },
   { zh: "中国新闻网", en: "China News Network" },
   { zh: "封面新闻", en: "Cover News" },
+  { zh: "上级团组织", en: "League Org" },
 ];
 
 export function ContentCreation() {
@@ -47,29 +48,24 @@ export function ContentCreation() {
     .map((s: string) => s.trim());
 
   return (
-    <SectionWrapper id="content" orb={{ color: "#06B6D4", size: 320, position: "top-1/3 -right-16" }} gradientBottom>
+    <SectionWrapper id="content" gradientBottom className="md:py-48 py-32">
       <SectionHeading
-        number="03"
         title={t("content.title")}
         subtitle={t("content.subtitle")}
       />
 
-      <div className="max-w-5xl mx-auto space-y-12">
+      <div className="max-w-6xl mx-auto space-y-12">
         {/* Stats row */}
         <div className="grid grid-cols-3 gap-4 md:gap-8">
           {STATS.map((stat, i) => (
-            <motion.div
+            <div
               key={i}
-              initial={reduced ? {} : { opacity: 0, y: 16 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: i * 0.12, duration: 0.5 }}
-              className="text-center p-6 rounded-2xl border border-border bg-bg-elevated"
+              className="text-center p-6 md:p-8 rounded-2xl border border-border bg-bg-elevated"
             >
-              <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-accent/10 text-accent mb-3">
+              <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-accent/10 text-accent mb-4">
                 {stat.icon}
               </span>
-              <div className="text-3xl md:text-4xl text-text-primary mb-1">
+              <div className="font-display text-3xl md:text-5xl text-text-primary mb-1">
                 <AnimatedCounter
                   value={stat.value}
                   suffix={stat.suffix}
@@ -79,7 +75,7 @@ export function ContentCreation() {
               <p className="text-xs text-text-tertiary font-mono uppercase tracking-wider">
                 {locale === "zh" ? stat.labelZh : stat.labelEn}
               </p>
-            </motion.div>
+            </div>
           ))}
         </div>
 
@@ -88,68 +84,70 @@ export function ContentCreation() {
           initial={reduced ? {} : { opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          transition={{ delay: 0.3, duration: 0.6 }}
+          transition={{ delay: 0.2, duration: 0.6 }}
           className="rounded-2xl border border-border bg-bg-elevated overflow-hidden"
         >
-          {/* Video cover image */}
-          <div className="aspect-video bg-bg-surface flex items-center justify-center border-b border-border overflow-hidden">
+          {/* Video cover with play button */}
+          <a
+            href="https://www.thecover.cn/video/Lk/1Scm5Z8mH90qSdq8Jkw=="
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block relative aspect-video bg-bg-surface border-b border-border overflow-hidden group"
+          >
             <img
               src="/daozhonghua-cover.jpg"
               alt={locale === "zh" ? "道中华工作室视频截图" : "Dao Zhonghua Studio Video"}
-              className="w-full h-full object-cover"
+              loading="lazy"
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
             />
-          </div>
+            <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+              <div className="w-16 h-16 rounded-full bg-bg-primary/70 backdrop-blur-md flex items-center justify-center text-white group-hover:scale-110 group-hover:bg-accent group-hover:text-bg-primary transition-all duration-300 shadow-xl">
+                <Play size={28} className="ml-1" />
+              </div>
+            </div>
+          </a>
 
-          <div className="p-6 md:p-8">
+          <div className="p-6 md:p-10">
             <div className="flex items-start justify-between flex-wrap gap-4 mb-4">
               <div>
-                <h3 className="text-xl md:text-2xl font-bold text-text-primary">
+                <h3 className="font-display text-2xl md:text-3xl font-bold text-text-primary">
                   {t("content.daozhonghua.title")}
                 </h3>
-                <p className="text-sm text-accent mt-1">
+                <p className="text-sm text-accent mt-1.5">
                   {t("content.daozhonghua.role")} ·{" "}
                   {t("content.daozhonghua.period")}
                 </p>
               </div>
             </div>
 
-            <p className="text-text-secondary leading-relaxed mb-4">
+            <p className="text-text-secondary leading-relaxed mb-5">
               {t("content.daozhonghua.description")}
             </p>
 
             {/* Highlights badges */}
-            <div className="flex flex-wrap gap-2 mb-5">
+            <div className="flex flex-wrap gap-2 mb-6">
               {highlights.map((h: string, i: number) => (
-                <motion.span
+                <span
                   key={i}
-                  initial={reduced ? {} : { opacity: 0, scale: 0.8 }}
-                  whileInView={{ opacity: 1, scale: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: 0.6 + i * 0.08, type: "spring", stiffness: 400, damping: 25 }}
-                  className="px-3 py-1 rounded-full text-xs font-medium border border-accent/30 bg-accent/5 text-accent"
+                  className="px-3 py-1.5 rounded-full text-xs font-medium border border-accent/20 bg-accent/5 text-accent"
                 >
                   {h}
-                </motion.span>
+                </span>
               ))}
             </div>
 
-            {/* Media outlet logos */}
-            <div className="flex items-center gap-6 pt-4 border-t border-border">
-              <span className="text-xs font-mono text-text-tertiary uppercase tracking-wider">
+            {/* Media outlet logos row */}
+            <div className="flex flex-wrap items-center gap-5 pt-5 border-t border-border">
+              <span className="text-[10px] font-mono text-text-tertiary uppercase tracking-[0.15em]">
                 {locale === "zh" ? "媒体转载" : "Featured on"}
               </span>
               {MEDIA_OUTLETS.map((outlet, i) => (
-                <motion.span
+                <span
                   key={i}
-                  initial={reduced ? {} : { opacity: 0 }}
-                  whileInView={{ opacity: 1 }}
-                  viewport={{ once: true }}
-                  whileHover={{ y: -2, color: "var(--accent)" }}
-                  transition={{ delay: 0.8 + i * 0.12 }}
-                  className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors cursor-default"
+                  className="text-sm font-medium text-text-secondary hover:text-text-primary hover:-translate-y-0.5 transition-all cursor-default"
                 >
                   {locale === "zh" ? outlet.zh : outlet.en}
-                </motion.span>
+                </span>
               ))}
             </div>
           </div>

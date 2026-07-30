@@ -46,7 +46,7 @@ export function SectionHeading({
           {number}
         </span>
       )}
-      <h2 className="text-3xl md:text-5xl lg:text-6xl font-bold tracking-tight text-text-primary">
+      <h2 className="font-display text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight text-text-primary">
         {title}
       </h2>
       {subtitle && (

@@ -42,26 +42,26 @@ export function Experience() {
   ];
 
   return (
-    <SectionWrapper id="experience" orb={{ color: "#F59E0B", size: 340, position: "top-0 -left-20" }} gradientBottom>
-      <SectionHeading number="05" title={t("experience.title")} />
+    <SectionWrapper id="experience" gradientBottom className="md:py-48 py-32">
+      <SectionHeading title={t("experience.title")} />
 
       <div className="max-w-3xl mx-auto">
         <Timeline items={items} />
       </div>
 
       {/* AI Research section inline */}
-      <div className="max-w-3xl mx-auto mt-20 pt-12 border-t border-border">
-        <h3 className="text-xl md:text-2xl font-bold text-text-primary mb-6">
+      <div className="max-w-3xl mx-auto mt-20 md:mt-28 pt-12 border-t border-border">
+        <h3 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-8">
           {t("aiResearch.title")}
         </h3>
-        <div className="space-y-4">
+        <div className="space-y-5">
           {[
             t("aiResearch.desc1"),
             t("aiResearch.desc2"),
             t("aiResearch.desc3"),
           ].map((desc, i) => (
-            <div key={i} className="flex gap-3">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full bg-accent/10 text-accent text-xs font-mono flex items-center justify-center">
+            <div key={i} className="flex gap-4">
+              <span className="flex-shrink-0 w-7 h-7 rounded-full bg-accent/10 text-accent text-xs font-mono flex items-center justify-center mt-0.5">
                 {i + 1}
               </span>
               <p className="text-text-secondary leading-relaxed">{desc}</p>

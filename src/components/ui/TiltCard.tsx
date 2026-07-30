@@ -4,24 +4,6 @@ import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import { type ReactNode, useCallback, useRef } from "react";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 
-interface AnimatedNumberProps {
-  n: number;
-}
-
-function AnimatedNumber({ n }: AnimatedNumberProps) {
-  const spring = useSpring(n, { stiffness: 80, damping: 30 });
-  const display = useTransform(spring, (v) => Math.round(v));
-
-  // Sync when n changes
-  spring.set(n);
-
-  return (
-    <motion.span className="font-mono font-bold tracking-tight">
-      {display}
-    </motion.span>
-  );
-}
-
 interface TiltCardProps {
   children: ReactNode;
   className?: string;
@@ -93,5 +75,3 @@ export function TiltCard({
     </motion.div>
   );
 }
-
-export { AnimatedNumber };

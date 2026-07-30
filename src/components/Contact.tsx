@@ -33,12 +33,9 @@ export function Contact() {
   ];
 
   return (
-    <SectionWrapper id="contact" className="bg-bg-elevated/50" orb={{ color: "var(--accent)", size: 360, position: "bottom-0 -right-24" }}>
+    <SectionWrapper id="contact" className="md:py-48 py-32">
       <SectionHeading
-        number="06"
         title={t("contact.title")}
-        align="center"
-        className="text-center"
       />
 
       <div className="max-w-2xl mx-auto">
@@ -79,10 +76,10 @@ export function Contact() {
           viewport={{ once: true }}
           whileHover={{ scale: 1.02 }}
           transition={{ delay: 0.5, duration: 0.5 }}
-          className="flex items-center justify-center gap-2 mx-auto max-w-xs px-6 py-3 bg-accent hover:bg-accent/90 text-white font-medium rounded-xl transition-all hover:shadow-[0_0_30px_var(--accent-glow)]"
+          className="flex items-center justify-center gap-2 mx-auto max-w-xs px-6 py-3.5 bg-accent hover:bg-accent/90 text-bg-primary font-semibold rounded-xl transition-all hover:shadow-[0_0_40px_var(--accent-glow)]"
         >
           <FileText size={18} />
-          {locale === "zh" ? "下载简历 PDF" : "Download Resume PDF"}
+          {t("contact.downloadResume")}
         </motion.a>
       </div>
     </SectionWrapper>
