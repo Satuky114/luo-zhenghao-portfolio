@@ -2,9 +2,10 @@
 
 import { useRef } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
-import { ArrowDown, Mail, Play, ExternalLink } from "lucide-react";
+import { ArrowDown, Mail, Play } from "lucide-react";
 import { useI18n } from "@/app/[locale]/ClientIntlProvider";
 import { GlowOrb } from "@/components/ui/GlowOrb";
+import { GeometricFrame } from "@/components/ui/GeometricFrame";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 
 export function Hero() {
@@ -75,15 +76,18 @@ export function Hero() {
 
         {/* ====== RIGHT: Value proposition ====== */}
         <div className="relative z-10 order-1 md:order-2 text-center md:text-left">
-          {/* Eyebrow */}
-          <motion.p
-            initial={reduced ? {} : { opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1, duration: 0.5, ease: "easeOut" }}
-            className="font-mono text-xs md:text-sm text-text-tertiary tracking-[0.2em] uppercase mb-6"
+          {/* Eyebrow + geometric accent */}
+          <motion.div
+            initial={reduced ? {} : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.08, duration: 0.5 }}
+            className="flex items-center gap-4 mb-6 justify-center md:justify-start"
           >
-            {locale === "zh" ? "AI 内容创作者 · 成都" : "AI Content Creator · Chengdu"}
-          </motion.p>
+            <GeometricFrame size={36} />
+            <p className="font-mono text-xs md:text-sm text-text-tertiary tracking-[0.2em] uppercase">
+              {locale === "zh" ? "AI 内容创作者 · 成都" : "AI Content Creator · Chengdu"}
+            </p>
+          </motion.div>
 
           {/* Value proposition — the thesis */}
           <motion.h1

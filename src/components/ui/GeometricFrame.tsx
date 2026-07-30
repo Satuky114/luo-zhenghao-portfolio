@@ -4,11 +4,17 @@ import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useEffect } from "react";
 
+interface GeometricFrameProps {
+  /** Override default size */
+  size?: number;
+}
+
 /**
  * SVG geometric wireframe (octahedron) that slowly rotates.
- * Uses mouse position for subtle parallax offset.
+ * Small variant for Hero accent. Original full-size was reserved for background;
+ * this one serves as a decorative accent by the heading.
  */
-export function GeometricFrame() {
+export function GeometricFrame({ size = 64 }: GeometricFrameProps) {
   const reduced = useReducedMotion();
 
   const mouseX = useMotionValue(0);
@@ -16,10 +22,9 @@ export function GeometricFrame() {
   const springX = useSpring(mouseX, { stiffness: 50, damping: 30 });
   const springY = useSpring(mouseY, { stiffness: 50, damping: 30 });
 
-  const offsetX = useTransform(springX, [-1, 1], [-15, 15]);
-  const offsetY = useTransform(springY, [-1, 1], [-15, 15]);
+  const offsetX = useTransform(springX, [-1, 1], [-6, 6]);
+  const offsetY = useTransform(springY, [-1, 1], [-6, 6]);
 
-  // Track mouse globally — properly cleaned up
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       mouseX.set((e.clientX / window.innerWidth) * 2 - 1);
@@ -30,16 +35,19 @@ export function GeometricFrame() {
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [mouseX, mouseY]);
 
+  const half = size / 2;
+  const vb = `${-half} ${-half} ${size} ${size}`;
+
   return (
     <motion.div
-      className="absolute inset-0 flex items-center justify-center pointer-events-none select-none"
-      style={{ x: reduced ? 0 : offsetX, y: reduced ? 0 : offsetY }}
+      className="pointer-events-none select-none"
+      style={{ width: size, height: size, x: reduced ? 0 : offsetX, y: reduced ? 0 : offsetY }}
     >
       <motion.svg
-        width="320"
-        height="320"
-        viewBox="-160 -160 320 320"
-        className="opacity-25"
+        width={size}
+        height={size}
+        viewBox={vb}
+        className="opacity-35"
         animate={
           reduced
             ? {}
@@ -50,44 +58,24 @@ export function GeometricFrame() {
               }
         }
         transition={{
-          rotateX: { duration: 20, repeat: Infinity, ease: "linear" },
-          rotateY: { duration: 24, repeat: Infinity, ease: "linear" },
-          rotateZ: { duration: 28, repeat: Infinity, ease: "linear" },
+          rotateX: { duration: 16, repeat: Infinity, ease: "linear" },
+          rotateY: { duration: 19, repeat: Infinity, ease: "linear" },
+          rotateZ: { duration: 22, repeat: Infinity, ease: "linear" },
         }}
       >
-        {/* Octahedron wireframe */}
-        <g fill="none" stroke="var(--accent)" strokeWidth="1.2" opacity="0.55">
-          {/* Top pyramid */}
-          <polygon points="0,-120 104,0 -104,0" />
-          {/* Bottom pyramid */}
-          <polygon points="0,120 104,0 -104,0" />
-          {/* Side triangles */}
-          <polygon points="0,-120 104,0 0,120" />
-          <polygon points="0,-120 -104,0 0,120" />
-          {/* Equator */}
-          <line x1="-140" y1="0" x2="140" y2="0" opacity="0.12" />
-          {/* Inner connection lines */}
-          <line x1="0" y1="-120" x2="0" y2="120" opacity="0.08" />
+        <g fill="none" stroke="var(--accent)" strokeWidth="1.5" opacity="0.55">
+          <polygon points="0,-48 42,0 -42,0" />
+          <polygon points="0,48 42,0 -42,0" />
+          <polygon points="0,-48 42,0 0,48" />
+          <polygon points="0,-48 -42,0 0,48" />
         </g>
-
-        {/* Nodes at vertices */}
         <g fill="var(--accent)" opacity="0.7">
-          <circle cx="0" cy="-120" r="3" />
-          <circle cx="0" cy="120" r="3" />
-          <circle cx="104" cy="0" r="3" />
-          <circle cx="-104" cy="0" r="3" />
+          <circle cx="0" cy="-48" r="1.2" />
+          <circle cx="0" cy="48" r="1.2" />
+          <circle cx="42" cy="0" r="1.2" />
+          <circle cx="-42" cy="0" r="1.2" />
         </g>
-
-        {/* Outer ring */}
-        <circle
-          cx="0"
-          cy="0"
-          r="130"
-          fill="none"
-          stroke="var(--accent)"
-          strokeWidth="0.5"
-          opacity="0.1"
-        />
+        <circle cx="0" cy="0" r="52" fill="none" stroke="var(--accent)" strokeWidth="0.5" opacity="0.1" />
       </motion.svg>
     </motion.div>
   );

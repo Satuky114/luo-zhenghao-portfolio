@@ -274,13 +274,13 @@ export function Projects() {
   const reduced = useReducedMotion();
 
   return (
-    <SectionWrapper id="projects" gradientBottom className="md:py-48 py-32">
+    <SectionWrapper id="projects" gradientBottom>
       <SectionHeading
         title={t("projects.title")}
         subtitle={t("projects.subtitle")}
       />
 
-      <div className="max-w-6xl mx-auto space-y-20 md:space-y-32">
+      <div className="max-w-6xl mx-auto space-y-24 md:space-y-40">
         {PROJECTS.map((project, idx) => (
           <ProjectCard
             key={project.id}

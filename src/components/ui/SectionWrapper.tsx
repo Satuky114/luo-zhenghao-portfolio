@@ -58,7 +58,7 @@ export function SectionWrapper({
       initial={reduced ? "visible" : "hidden"}
       animate={inView ? "visible" : "hidden"}
       variants={variants ?? defaultVariants}
-      className={cn("relative py-24 md:py-40 px-6 md:px-12 lg:px-24 overflow-hidden", className)}
+      className={cn("relative py-32 md:py-56 px-6 md:px-12 lg:px-24 overflow-hidden", className)}
     >
       {orb && (
         <GlowOrb

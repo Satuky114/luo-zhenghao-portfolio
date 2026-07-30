@@ -1,22 +1,22 @@
 "use client";
 
 import { useI18n } from "@/app/[locale]/ClientIntlProvider";
-import { GitFork, Video, Camera, Globe } from "lucide-react";
+import { Smartphone, Video, Camera, Globe } from "lucide-react";
 
 const SOCIAL_LINKS = [
   {
-    icon: <GitFork size={18} />,
+    icon: <Video size={18} />,
     label: "GitHub",
     href: "https://github.com/satuky114",
   },
   {
-    icon: <Video size={18} />,
-    label: "bilibili",
-    href: "#",
+    icon: <Smartphone size={18} />,
+    label: "抖音",
+    href: "https://v.douyin.com/7ijCop_yudg/",
   },
   {
     icon: <Camera size={18} />,
-    label: "小红书",
+    label: "B站",
     href: "#",
   },
   {
