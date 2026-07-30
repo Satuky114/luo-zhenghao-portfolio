@@ -149,7 +149,8 @@ function ProjectCard({
                 src={project.image}
                 alt={title}
                 loading="lazy"
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+                                                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+              style={{ objectPosition: "center top" }}
               />
               <div
                 className="absolute inset-0 pointer-events-none"
