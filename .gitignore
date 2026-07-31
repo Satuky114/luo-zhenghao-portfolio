@@ -41,10 +41,10 @@ __pycache__/
 *.pyc
 
 # vercel
-.vercel
+.vercel/
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
 
-.vercel
+.vercel/
