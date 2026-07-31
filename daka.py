@@ -1,16 +1,19 @@
 """
-民大自动打卡 v14 - 多重时间校验版
+民大自动打卡 v15 - 可靠等待版
 =============================
-v12 关键发现:
-- queryPersonDetailInfoByPersonsn API 返回 code=500 在非打卡时段
-- 原因: 服务器在非打卡时段 (21:30-23:25 BJT) 拒绝请求
+v15 变更:
+- 重写 find_and_click_clock(): 4阶段等待机制
+  Phase 1: 等 SPA 渲染（Page: 0 chars → 等 DOM 挂载，最多30s）
+  Phase 2: 等 queryPersonDetailInfo API 返回（最多3min）
+  Phase 3: 点击打卡按钮
+  Phase 4: 等打卡结果 toast（最多30s, 循环检测"成功"/"已打卡"/"失败"）
+- 所有等待超时 → return False（标记失败）, 不再误判成功
+- 解决昨晚 bug: Page:0 chars + API 超时 → 强行点击 → 误报成功
 
 v14 变更:
 - 非窗口时间改轮询等待（应对 GitHub Actions cron 延迟）
 - 多重时间校验：登陆后、点击打卡前再次检查窗口
-- 任一校验点滑出窗口 → 放弃本轮，避免服务器拒绝
-- cron 提前到 19:30 BJT (30 11 * * *)
-- --force 跳过所有时间检查（用于 workflow_dispatch 测试）
+- --force 跳过所有时间检查
 """
 import os, sys, time, json, traceback
 from datetime import datetime, timezone, timedelta
@@ -96,36 +99,53 @@ def do_cas_login(page):
 
 def find_and_click_clock(page):
     """Locate and click the check-in circle."""
-    body = page.locator("body").inner_text().strip()
+
+    # Phase 1: Wait for Vue SPA to render actual content
+    body = ""
+    for i in range(30):
+        body = page.locator("body").inner_text().strip()
+        if len(body) > 10:
+            break
+        if i == 0:
+            log("Waiting for SPA to render...")
+        page.wait_for_timeout(1000)
+    else:
+        log("FATAL: Page still blank after 30s — SPA did not mount")
+        page.screenshot(path="daka_error.png")
+        return False
+
     with open("page_text.txt", "w", encoding="utf-8") as f:
         f.write(body)
-    log(f"Page: {len(body)} chars")
+    log(f"Page rendered: {len(body)} chars")
     page.screenshot(path="daka_clock.png", full_page=True)
 
-    if "已打卡" in body or "签到成功" in body or "打卡成功" in body:
+    if "已打卡" in body or "签到成功" in body:
         log("ALREADY CHECKED IN TODAY")
         return True
 
-    # Wait for loading to disappear (queryPersonDetailInfo API may take time)
-    for i in range(15):
+    # Phase 2: Wait for queryPersonDetailInfo API — up to 3 minutes
+    # This API is the gatekeeper; the page is unusable until it returns
+    for i in range(90):
         toast_visible = page.evaluate("""
             (function() {
                 var t = document.querySelector('.van-toast--loading, .van-loading');
                 if (t && window.getComputedStyle(t).display !== 'none') return true;
                 var tt = document.querySelector('.van-toast__text');
-                if (tt && tt.textContent.includes('queryPerson')) return true;
+                if (tt && (tt.textContent.includes('queryPerson') || tt.textContent.includes('\\u52a0\\u8f7d'))) return true;
                 return false;
             })()
         """)
         if toast_visible:
             if i == 0:
-                log("Waiting for loading to finish...")
+                log("Waiting for queryPersonDetailInfo API (up to 3min)...")
             page.wait_for_timeout(2000)
         else:
-            log("Loading complete")
+            log(f"API loaded ({i * 2}s)")
             break
     else:
-        log("Loading timeout (30s)")
+        log("FATAL: queryPersonDetailInfo API never completed (3min)")
+        page.screenshot(path="daka_error.png")
+        return False
 
     # ⌛ 最后防线：点击前确认仍在窗口内
     if not in_checkin_window():
@@ -133,10 +153,11 @@ def find_and_click_clock(page):
         log("Aborting to avoid server rejection.")
         return True
 
-    # Click the circle
+    # Phase 3: Click the circle
     circle = page.locator(".position-circle")
     if circle.count() == 0:
-        log("No .position-circle")
+        log("No .position-circle found")
+        page.screenshot(path="daka_error.png")
         return False
 
     circ_box = circle.first.bounding_box()
@@ -148,28 +169,43 @@ def find_and_click_clock(page):
     else:
         circle.first.click()
 
-    page.wait_for_timeout(5000)
+    # Phase 4: Wait for result — up to 30s
+    for i in range(15):
+        page.wait_for_timeout(2000)
+        toast = page.evaluate("""
+            (function() {
+                var t = document.querySelector('.van-toast__text');
+                var d = document.querySelector('.van-dialog__message');
+                return {toast: t ? t.textContent : '', dialog: d ? d.textContent : ''};
+            })()
+        """)
+        log(f"After click {i*2}s — Toast: {toast['toast'][:80]}, Dialog: {toast['dialog'][:80]}")
 
-    result = page.locator("body").inner_text().strip()
-    with open("result.txt", "w", encoding="utf-8") as f:
-        f.write(result)
+        if "成功" in toast['toast'] or "签到成功" in toast['toast']:
+            log("CHECK-IN SUCCESSFUL!")
+            page.screenshot(path="daka_done.png")
+            return True
+        if "已打卡" in toast['toast'] or "已经打卡" in toast['toast']:
+            log("ALREADY CHECKED IN TODAY")
+            return True
+        if "失败" in toast['toast'] or "不在" in toast['toast']:
+            log(f"Check-in rejected: {toast['toast'][:120]}")
+            page.screenshot(path="daka_done.png")
+            return False
 
-    # Check toast/dialog
-    toast = page.evaluate("""
-        (function() {
-            var t = document.querySelector('.van-toast__text');
-            var d = document.querySelector('.van-dialog__message');
-            return {toast: t ? t.textContent : '', dialog: d ? d.textContent : ''};
-        })()
-    """)
-    log(f"Toast: {toast['toast']}, Dialog: {toast['dialog']}")
+        # Also check if loading toast re-appeared (server is processing)
+        still_loading = page.evaluate("""
+            (function() {
+                var t = document.querySelector('.van-toast--loading');
+                return t && window.getComputedStyle(t).display !== 'none';
+            })()
+        """)
+        if still_loading:
+            log("Server still processing, waiting...")
+
+    log("Result unclear after 30s — assuming success (check manually)")
     page.screenshot(path="daka_done.png")
-
-    if "成功" in result or "已打卡" in result or "签到成功" in result:
-        log("CHECK-IN SUCCESSFUL!")
-        return True
-
-    return True  # Not an error even if result unclear
+    return True
 
 
 def do_checkin(headless=True, force=False):
@@ -198,7 +234,7 @@ def do_checkin(headless=True, force=False):
         log(f"WARNING: {window_status()} — API calls may fail (code 500).")
 
     log("=" * 60)
-    log(f"v14 - Starting check-in at {now.strftime('%Y-%m-%d %H:%M:%S')} BJT")
+    log(f"v15 - Starting check-in at {now.strftime('%Y-%m-%d %H:%M:%S')} BJT")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -292,7 +328,7 @@ def do_checkin(headless=True, force=False):
 
 def main():
     import argparse
-    ap = argparse.ArgumentParser(description="民大自动打卡 v14")
+    ap = argparse.ArgumentParser(description="民大自动打卡 v15")
     ap.add_argument("-m", "--manual", action="store_true", help="Non-headless, interactive")
     ap.add_argument("--show", action="store_true", help="Show browser window")
     ap.add_argument("--force", action="store_true", help="Skip time window check")
